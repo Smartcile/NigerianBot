@@ -9,7 +9,7 @@ use serenity::all::{
     ChannelId, CommandDataOptionValue, CommandInteraction, CommandOptionType, Context,
     CreateCommand, CreateCommandOption, EditInteractionResponse, GuildId, UserId,
 };
-use songbird::input::{Compose, File, Input, YoutubeDl};
+use songbird::input::{ChildContainer, Compose, Input, RawAdapter, YoutubeDl};
 use tracing::warn;
 
 pub fn definition() -> CreateCommand {
@@ -143,7 +143,7 @@ async fn play_inner(
                 .and_then(|n| n.to_str())
                 .unwrap_or(arg)
                 .to_string();
-            (File::new(path).into(), title)
+            (ffmpeg_input(&path)?, title)
         };
 
     let was_empty = {
@@ -284,6 +284,29 @@ fn user_voice_channel(ctx: &Context, guild_id: GuildId, user_id: UserId) -> Opti
         .voice_states
         .get(&user_id)
         .and_then(|vs| vs.channel_id)
+}
+
+/// Decode a local file through ffmpeg into raw f32 PCM that songbird plays
+/// directly. Using ffmpeg instead of songbird's built-in symphonia decoder makes
+/// playback tolerant of any container/codec and of metadata tags (e.g. ID3v2)
+/// that would otherwise abort decoding.
+fn ffmpeg_input(path: &std::path::Path) -> anyhow::Result<Input> {
+    use songbird::input::core::io::ReadOnlySource;
+    use std::process::{Command, Stdio};
+
+    let child = Command::new("ffmpeg")
+        .arg("-i")
+        .arg(path)
+        // Raw interleaved 32-bit float PCM, stereo, 48 kHz (what songbird wants).
+        .args(["-f", "f32le", "-ac", "2", "-ar", "48000", "pipe:1"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| anyhow!("failed to start ffmpeg: {e}"))?;
+
+    let source = ReadOnlySource::new(ChildContainer::from(child));
+    Ok(RawAdapter::new(source, 48000, 2).into())
 }
 
 fn sub_option_str<'a>(command: &'a CommandInteraction, name: &str) -> Option<&'a str> {

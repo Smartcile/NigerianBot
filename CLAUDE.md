@@ -94,6 +94,14 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   via **ffmpeg → f32 PCM → `RawAdapter`** (songbird's symphonia ships with NO
   codecs enabled by default — the bot enables them via a direct `symphonia`
   dep with `features=["all"]`, which provides the PCM decoder).
+- **Voice-bot pool (DONE):** one process runs the primary bot + extra bots from
+  `DISCORD_TOKEN_2..9`. Each is its own serenity `Client` + `Songbird` (workers
+  started via `register_songbird_with` on spawned tasks; only the primary
+  registers commands). `BotState.pool` (`VoicePool`) picks a free bot per voice
+  request so channels play simultaneously. A Discord bot can only be in ONE voice
+  channel per guild — multiple bots is the only way around it. Button custom_ids
+  encode the bot pool index (`music_skip:2`); control commands target the bot in
+  the user's channel. Extra bots need only `bot` scope + Connect/Speak.
 - **CI caching (DONE):** Dockerfiles use **cargo-chef** + GHCR registry cache
   (`cache-from/to type=registry ...:buildcache`). Dependency-only changes are
   slow once; code-only changes build in ~90s (was 20+ min). Verify Docker builds

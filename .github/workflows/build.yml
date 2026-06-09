@@ -1,21 +1,22 @@
-name: Build & push bot image
+name: Build & push images
 
-# Builds the bot Docker image on GitHub's runners and pushes it to the GitHub
-# Container Registry (GHCR). Portainer then just pulls the prebuilt image, so the
-# server never compiles Rust and never has to build from a Dockerfile.
+# Builds the service Docker images on GitHub's runners and pushes them to the
+# GitHub Container Registry (GHCR). Portainer then just pulls the prebuilt
+# images, so the server never compiles Rust.
 
 on:
   push:
     branches: [main]
     paths:
       - "bot/**"
-      - "common/**"
       - "api/**"
+      - "common/**"
       - "scheduler/**"
       - "worker/**"
+      - "migrations/**"
       - "Cargo.toml"
       - "Cargo.lock"
-      - "Dockerfile.bot"
+      - "Dockerfile.*"
       - ".github/workflows/build.yml"
   workflow_dispatch: {}
 
@@ -25,6 +26,13 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      matrix:
+        include:
+          - dockerfile: Dockerfile.bot
+            image: nigerianbot-bot
+          - dockerfile: Dockerfile.api
+            image: nigerianbot-api
     steps:
       - uses: actions/checkout@v4
 
@@ -40,18 +48,17 @@ jobs:
       # GHCR requires a lowercase image path.
       - name: Compute image name
         id: img
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/nigerianbot-bot" >> "$GITHUB_OUTPUT"
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.image }}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.bot
+          file: ${{ matrix.dockerfile }}
           push: true
           platforms: linux/amd64
           tags: |
             ${{ steps.img.outputs.name }}:latest
             ${{ steps.img.outputs.name }}:${{ github.sha }}
           # Note: the type=gha cache backend was removed — it intermittently
-          # returns 504s on layer-blob writes. Add a registry-based cache later
-          # if build times become a problem.
+          # returns 504s on layer-blob writes.

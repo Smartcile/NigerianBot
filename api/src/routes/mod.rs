@@ -9,18 +9,18 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.route("/health", web::get().to(handlers::health))
         .service(
             web::scope("/api")
-                // --- Authentication (Phase 4) ---
-                .route("/auth/login", web::post().to(handlers::not_implemented))
-                .route("/auth/refresh", web::post().to(handlers::not_implemented))
+                // --- Authentication ---
+                .route("/auth/login", web::post().to(handlers::login))
+                .route("/auth/refresh", web::post().to(handlers::refresh))
                 // --- Bot control ---
-                .route("/bot/status", web::get().to(handlers::not_implemented))
+                .route("/bot/status", web::get().to(handlers::bot_status))
+                .route("/bot/logs", web::get().to(handlers::bot_logs))
                 .route(
                     "/bot/command/{command}",
                     web::post().to(handlers::not_implemented),
                 )
-                .route("/bot/logs", web::get().to(handlers::not_implemented))
                 .route("/bot/settings", web::post().to(handlers::not_implemented))
-                // --- Workflows ---
+                // --- Workflows (Phase 8) ---
                 .route("/workflows", web::get().to(handlers::not_implemented))
                 .route(
                     "/workflows/{id}/execute",
@@ -30,7 +30,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                     "/workflows/{id}/status",
                     web::get().to(handlers::not_implemented),
                 )
-                // --- Service proxies ---
+                // --- Service proxies (Phase 5/6) ---
                 .route(
                     "/services/sonar/{project}",
                     web::get().to(handlers::not_implemented),

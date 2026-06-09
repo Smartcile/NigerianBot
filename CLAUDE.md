@@ -67,8 +67,15 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   logged count. Postgres added to the Portainer stack (compose). Note: queries use
   runtime `sqlx::query` (not the `query!` macro) so CI builds need no live DB; the
   Dockerfile copies `migrations/` so `migrate!` can embed them.
-- Phases 4–11: API auth, Sonar/Radar, music, dashboard, scheduler/worker logic,
-  Docker hardening, CI/CD, docs.
+- **Phase 4 — DONE:** API backend (actix-web). Connects to the same Postgres
+  (+ runs migrations), `POST /api/auth/login` exchanges `API_KEY` for a JWT,
+  `AuthUser` extractor guards `/api/*`, `POST /api/auth/refresh`,
+  `GET /api/bot/status` and `GET /api/bot/logs` (reads `audit_log`). New
+  `Dockerfile.api` + CI matrix builds both `nigerianbot-bot` and `nigerianbot-api`
+  on GHCR. `api` service added to the stack, exposed on port 8000. The
+  `nigerianbot-api` GHCR package must be made public once (like the bot did).
+- Phases 5–11: Sonar/Radar, music, dashboard, scheduler/worker logic, Docker
+  hardening, CI/CD polish, docs.
 
 ## Deploy / CI cheatsheet
 

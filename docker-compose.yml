@@ -1,13 +1,15 @@
-# NigerianBot — Phase 3 stack (Discord bot + PostgreSQL).
+# NigerianBot — Phase 4 stack (Discord bot + PostgreSQL + API).
 #
-# The bot image is built by GitHub Actions and published to GHCR, so Portainer
-# just PULLS it. Deploy as a Stack in Portainer (Stacks → Add stack →
-# Repository) and set these under "Environment variables":
+# Images are built by GitHub Actions and published to GHCR, so Portainer just
+# PULLS them. Deploy as a Stack in Portainer (Stacks → Add stack → Repository)
+# and set these under "Environment variables":
 #   DISCORD_TOKEN      (required)  your Discord bot token
 #   DISCORD_GUILD_ID   (optional)  your server id for instant command registration
-#   POSTGRES_PASSWORD  (required)  any strong password you choose for the database
+#   POSTGRES_PASSWORD  (required)  the database password you chose in Phase 3
+#   API_KEY            (required)  secret to log into the API (the one generated earlier)
+#   JWT_SECRET         (required)  secret used to sign API tokens (generated earlier)
 #
-# Later phases add redis, api, scheduler, worker, and the dashboard.
+# Later phases add redis, scheduler, worker, and the dashboard.
 
 services:
   postgres:
@@ -43,6 +45,27 @@ services:
       # Built from the postgres settings above; `postgres` is the service hostname.
       DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
       # Log verbosity: info | debug | trace
+      RUST_LOG: ${RUST_LOG:-info}
+
+  api:
+    image: ghcr.io/smartcile/nigerianbot-api:latest
+    container_name: nigerian-api
+    restart: unless-stopped
+    pull_policy: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # Exposes the API on host port 8000 (change the left number to remap).
+      - "${API_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      # Secret clients present to /api/auth/login to receive a JWT.
+      API_KEY: ${API_KEY:?set API_KEY in Portainer env}
+      # Secret used to sign JWTs.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Portainer env}
       RUST_LOG: ${RUST_LOG:-info}
 
 volumes:

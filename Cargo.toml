@@ -6,7 +6,7 @@ members = ["common", "bot", "api", "scheduler", "worker"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-rust-version = "1.75"
+rust-version = "1.83"
 
 # Centralized dependency versions so every service stays in lockstep.
 # Reference from a member crate with e.g. `tokio.workspace = true`.
@@ -19,16 +19,19 @@ thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "macros", "migrate", "chrono", "uuid"] }
-# Pinned to 0.11 to match songbird 0.4's reqwest (the YoutubeDl source takes a
+# Pinned to 0.12 to match songbird 0.6's reqwest (the YoutubeDl source takes a
 # reqwest::Client, so the versions must agree).
-reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 dotenvy = "0.15"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # Discord bot
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "voice", "cache"] }
-songbird = { version = "0.4", features = ["builtin-queue"] }
+# songbird 0.6 implements Discord's DAVE (E2EE) protocol, which Discord made
+# mandatory for all non-stage voice connections on 2026-03-02. Earlier versions
+# get rejected with voice close code 4017.
+songbird = { version = "0.6", features = ["builtin-queue"] }
 
 # API backend
 actix-web = "4"

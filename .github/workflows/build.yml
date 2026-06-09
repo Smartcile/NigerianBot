@@ -60,5 +60,8 @@ jobs:
           tags: |
             ${{ steps.img.outputs.name }}:latest
             ${{ steps.img.outputs.name }}:${{ github.sha }}
-          # Note: the type=gha cache backend was removed — it intermittently
-          # returns 504s on layer-blob writes.
+          # Registry-based layer cache on GHCR (reliable, unlike type=gha which
+          # 504'd). Combined with cargo-chef in the Dockerfiles, unchanged
+          # dependencies are reused so only changed code recompiles.
+          cache-from: type=registry,ref=${{ steps.img.outputs.name }}:buildcache
+          cache-to: type=registry,ref=${{ steps.img.outputs.name }}:buildcache,mode=max

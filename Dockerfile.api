@@ -1,22 +1,21 @@
 # syntax=docker/dockerfile:1
 #
 # API service image. Lives at the repo ROOT (Portainer mis-resolves Dockerfiles
-# in subdirectories). Build context is the repo root so the whole workspace and
-# the migrations directory are available.
+# in subdirectories). Uses cargo-chef to cache the dependency compile layer.
 
-# ─── Build stage ───────────────────────────────────────────────────────────
-FROM rust:1-bookworm AS builder
+FROM rust:1-bookworm AS chef
+RUN cargo install cargo-chef --locked
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock ./
-COPY common ./common
-COPY bot ./bot
-COPY api ./api
-COPY scheduler ./scheduler
-COPY worker ./worker
-# Embedded into the binary at build time via sqlx::migrate!.
-COPY migrations ./migrations
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+# Cached unless Cargo.toml/Cargo.lock change.
+RUN cargo chef cook --release --recipe-path recipe.json -p api
+COPY . .
 RUN cargo build --release -p api
 
 # ─── Runtime stage ─────────────────────────────────────────────────────────

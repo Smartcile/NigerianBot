@@ -1,30 +1,29 @@
 # syntax=docker/dockerfile:1
 #
 # Bot service image. Lives at the repo ROOT (Portainer mis-resolves Dockerfiles
-# in subdirectories). Build context is the repo root so the whole Cargo
-# workspace and the migrations directory are available.
+# in subdirectories). Uses cargo-chef so the heavy dependency compile (songbird,
+# symphonia, opus) is cached as its own layer and only rebuilt when dependencies
+# change — code-only changes recompile just the `bot` crate.
 
-# ─── Build stage ───────────────────────────────────────────────────────────
-FROM rust:1-bookworm AS builder
+FROM rust:1-bookworm AS chef
+RUN cargo install cargo-chef --locked
+WORKDIR /app
 
-# songbird's audio stack (audiopus) needs cmake + libopus to build.
+# Plan: capture the dependency graph (recipe) from the manifests.
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Build: cook dependencies (cached), then compile the bot.
+FROM chef AS builder
+# songbird's audio stack (opus) needs cmake + libopus to build.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake libopus-dev pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# Copy the workspace. Only `-p bot` (and its deps) actually gets compiled.
-COPY Cargo.toml Cargo.lock ./
-COPY common ./common
-COPY bot ./bot
-COPY api ./api
-COPY scheduler ./scheduler
-COPY worker ./worker
-# Migrations are embedded into the binary at build time via sqlx::migrate!,
-# so they must be present in the build context.
-COPY migrations ./migrations
-
+COPY --from=planner /app/recipe.json recipe.json
+# This layer is the slow one — cached unless Cargo.toml/Cargo.lock change.
+RUN cargo chef cook --release --recipe-path recipe.json -p bot
+COPY . .
 RUN cargo build --release -p bot
 
 # ─── Runtime stage ─────────────────────────────────────────────────────────
@@ -40,7 +39,6 @@ RUN apt-get update \
 
 COPY --from=builder /app/target/release/nigerian-bot /usr/local/bin/nigerian-bot
 
-# Non-root for safety.
 RUN useradd --create-home --uid 10001 appuser
 USER appuser
 

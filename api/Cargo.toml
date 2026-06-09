@@ -1,0 +1,24 @@
+[package]
+name = "api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "nigerian-api"
+path = "src/main.rs"
+
+[dependencies]
+common.workspace = true
+actix-web.workspace = true
+actix-rt.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+jsonwebtoken.workspace = true
+bcrypt.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+tracing.workspace = true
+tracing-actix-web.workspace = true
+anyhow.workspace = true

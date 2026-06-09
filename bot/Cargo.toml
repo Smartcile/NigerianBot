@@ -1,0 +1,26 @@
+[package]
+name = "bot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "nigerian-bot"
+path = "src/main.rs"
+
+[dependencies]
+common.workspace = true
+serenity.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+
+# Music playback (Phase 6). Enabling songbird's default `driver` feature pulls
+# in libopus/native deps, so it's intentionally deferred until that phase to
+# keep the initial build toolchain-light. Uncomment when implementing music:
+# songbird = { version = "0.4", features = ["serenity", "driver"] }

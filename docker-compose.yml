@@ -1,0 +1,25 @@
+# NigerianBot — Phase 1 stack (Discord bot only).
+#
+# Deploy this as a Stack in Portainer (Stacks → Add stack → Repository, or paste
+# this file under "Web editor"). Set DISCORD_TOKEN (and optionally
+# DISCORD_GUILD_ID) in Portainer's "Environment variables" section — do NOT put
+# real secrets in this file or commit them to Git.
+#
+# Later phases add postgres, redis, api, scheduler, worker, and the dashboard.
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    image: nigerianbot/bot:latest
+    container_name: nigerian-bot
+    restart: unless-stopped
+    environment:
+      # Required: your Discord bot token.
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN in Portainer env}
+      # Optional but recommended for testing: your server (guild) id makes slash
+      # commands register instantly instead of taking up to ~1 hour globally.
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      # Log verbosity: info | debug | trace
+      RUST_LOG: ${RUST_LOG:-info}

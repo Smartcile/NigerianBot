@@ -1,0 +1,25 @@
+# Rust
+/target
+**/target
+Cargo.lock.orig
+
+# Environment / secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Node / dashboard (Phase 7)
+node_modules/
+dashboard/build/
+dashboard/dist/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

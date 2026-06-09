@@ -1,0 +1,10 @@
+# Keep the Docker build context small and never ship secrets.
+target/
+**/target/
+.git/
+.github/
+.env
+.env.*
+!.env.example
+dashboard/
+*.log

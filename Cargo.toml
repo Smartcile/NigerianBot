@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = ["common", "bot", "api", "scheduler", "worker"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.75"
+
+# Centralized dependency versions so every service stays in lockstep.
+# Reference from a member crate with e.g. `tokio.workspace = true`.
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "macros", "chrono", "uuid"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+dotenvy = "0.15"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Discord bot
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model"] }
+
+# API backend
+actix-web = "4"
+actix-rt = "2"
+jsonwebtoken = "9"
+bcrypt = "0.15"
+tracing-actix-web = "0.7"
+
+# Scheduler
+tokio-cron-scheduler = "0.10"
+
+# Shared crate
+common = { path = "common" }

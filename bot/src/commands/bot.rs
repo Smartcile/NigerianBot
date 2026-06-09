@@ -76,6 +76,7 @@ async fn status(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<(
         .field("Version", env!("CARGO_PKG_VERSION"), true)
         .field("Database", db_status, true)
         .field("Commands logged", logged, true)
+        .field("Voice bots", state.pool.len().to_string(), true)
         .field(
             "Commands available",
             super::all_definitions().len().to_string(),

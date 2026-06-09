@@ -44,6 +44,13 @@ services:
       # Optional but recommended for testing: your server (guild) id makes slash
       # commands register instantly instead of taking up to ~1 hour globally.
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      # Optional extra bot tokens for the voice pool — each adds a bot that can
+      # hold its own voice connection, so multiple channels can play at once.
+      # Create extra Discord apps, invite them, and set their tokens here.
+      DISCORD_TOKEN_2: ${DISCORD_TOKEN_2:-}
+      DISCORD_TOKEN_3: ${DISCORD_TOKEN_3:-}
+      DISCORD_TOKEN_4: ${DISCORD_TOKEN_4:-}
+      DISCORD_TOKEN_5: ${DISCORD_TOKEN_5:-}
       # Built from the postgres settings above; `postgres` is the service hostname.
       DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
       # Folder (inside the container) where local music files live.

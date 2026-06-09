@@ -218,14 +218,17 @@ pub async fn maybe_play_joinsound(ctx: &Context, guild_id: GuildId, channel_id: 
         return false;
     };
 
-    // Don't interrupt if the bot is already connected in this guild.
-    if let Some(manager) = songbird::get(ctx).await {
-        if manager.get(guild_id).is_some() {
-            return false;
-        }
+    // If a bot is already in this channel, don't add another.
+    if state
+        .pool
+        .bot_in_channel(guild_id, channel_id)
+        .await
+        .is_some()
+    {
+        return false;
     }
 
-    if let Err(e) = super::music::play_once_and_leave(ctx, guild_id, channel_id, &source).await {
+    if let Err(e) = super::music::play_once_on_free_bot(ctx, guild_id, channel_id, &source).await {
         warn!(error = %e, "joinsound failed to start");
         return false;
     }

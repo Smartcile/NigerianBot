@@ -1,9 +1,8 @@
-//! `/music` — voice playback via songbird.
+//! `/music` — voice playback via songbird, across a pool of bots.
 //!
-//! Sources: a local file under the mounted music directory (`MUSIC_MOUNT_PATH`,
-//! decoded through ffmpeg so any codec/tag works) or a URL/YouTube link (yt-dlp).
-//! The now-playing message carries Pause/Skip/Stop buttons, the `play` option
-//! autocompletes from the local library, and the bot leaves after 3 idle minutes.
+//! Each playback request grabs a free bot from the pool (`BotState.pool`), so
+//! multiple channels can have audio at once. Control commands/buttons act on the
+//! specific bot that's playing (buttons encode the bot index in their custom id).
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -20,6 +19,8 @@ use songbird::input::{ChildContainer, Compose, Input, RawAdapter, YoutubeDl};
 use songbird::tracks::PlayMode;
 use songbird::{Event, EventContext, Songbird, TrackEvent};
 use tracing::warn;
+
+use crate::state::BotState;
 
 const AUDIO_EXTS: &[&str] = &["mp3", "flac", "wav", "ogg", "m4a", "opus", "aac", "wma"];
 
@@ -96,7 +97,7 @@ async fn play(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()>
     command.defer(&ctx.http).await?;
 
     let edit = match resolve_and_play(ctx, command, &arg).await {
-        Ok((title, was_empty)) => {
+        Ok((title, was_empty, bot_index)) => {
             let text = if was_empty {
                 format!("🎵 Now playing: **{title}**")
             } else {
@@ -104,7 +105,7 @@ async fn play(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()>
             };
             EditInteractionResponse::new()
                 .content(text)
-                .components(vec![controls_row()])
+                .components(vec![controls_row(bot_index)])
         }
         Err(e) => {
             warn!(error = %e, "music play failed");
@@ -120,7 +121,7 @@ async fn resolve_and_play(
     ctx: &Context,
     command: &CommandInteraction,
     arg: &str,
-) -> anyhow::Result<(String, bool)> {
+) -> anyhow::Result<(String, bool, usize)> {
     if arg.is_empty() {
         return Err(anyhow!("Provide a song name or link."));
     }
@@ -129,30 +130,40 @@ async fn resolve_and_play(
         .ok_or_else(|| anyhow!("Use this in a server."))?;
     let channel_id = user_voice_channel(ctx, guild_id, command.user.id)
         .ok_or_else(|| anyhow!("Join a voice channel first."))?;
-    play_source_in_channel(ctx, guild_id, channel_id, arg).await
+    play_on_free_bot(ctx, guild_id, channel_id, arg).await
 }
 
-/// Join `channel_id` (if needed) and enqueue `arg` (a local file or URL).
-/// Returns the resolved title and whether the queue was empty (i.e. now playing).
-/// Reused by `/music play` and by the `/autoplay` voice trigger.
-pub async fn play_source_in_channel(
+/// Pick a free pool bot, join `channel_id`, and enqueue `arg`. Returns the
+/// title, whether it started playing immediately, and the bot's pool index.
+pub async fn play_on_free_bot(
     ctx: &Context,
     guild_id: GuildId,
     channel_id: ChannelId,
     arg: &str,
+) -> anyhow::Result<(String, bool, usize)> {
+    let state = super::state(ctx).await;
+    let (index, songbird) = state
+        .pool
+        .pick_free(guild_id)
+        .ok_or_else(|| anyhow!("All voice bots are busy right now."))?;
+    let (title, was_empty) = enqueue(&state, &songbird, guild_id, channel_id, arg).await?;
+    Ok((title, was_empty, index))
+}
+
+async fn enqueue(
+    state: &BotState,
+    songbird: &Arc<Songbird>,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+    arg: &str,
 ) -> anyhow::Result<(String, bool)> {
-    let manager = songbird::get(ctx)
-        .await
-        .ok_or_else(|| anyhow!("voice subsystem not initialized"))?
-        .clone();
-    let newly_connected = manager.get(guild_id).is_none();
-    let call_lock = manager
+    let newly_connected = songbird.get(guild_id).is_none();
+    let call_lock = songbird
         .join(guild_id, channel_id)
         .await
         .map_err(|e| anyhow!("couldn't join the voice channel: {e}"))?;
 
-    let state = super::state(ctx).await;
-    let (input, title) = build_source(&state, arg).await?;
+    let (input, title) = build_source(state, arg).await?;
 
     let was_empty = {
         let call = call_lock.lock().await;
@@ -161,12 +172,11 @@ pub async fn play_source_in_channel(
     {
         let mut call = call_lock.lock().await;
         call.enqueue_input(input).await;
-        // On first connect, start the idle-leave watchdog.
         if newly_connected {
             call.add_global_event(
                 Event::Periodic(Duration::from_secs(60), None),
                 IdleLeaver {
-                    manager: manager.clone(),
+                    manager: songbird.clone(),
                     guild_id,
                     idle_minutes: Arc::new(AtomicU32::new(0)),
                 },
@@ -191,10 +201,8 @@ pub async fn play_source_in_channel(
     Ok((title, was_empty))
 }
 
-/// Join `channel_id`, play `source` once, and leave when it finishes.
-/// Used by `/joinsound` for entrance sounds. Builds the source first so a bad
-/// file/URL fails before the bot joins.
-pub async fn play_once_and_leave(
+/// Pick a free pool bot, join, play `source` once, and leave when it ends.
+pub async fn play_once_on_free_bot(
     ctx: &Context,
     guild_id: GuildId,
     channel_id: ChannelId,
@@ -203,11 +211,11 @@ pub async fn play_once_and_leave(
     let state = super::state(ctx).await;
     let (input, _title) = build_source(&state, source).await?;
 
-    let manager = songbird::get(ctx)
-        .await
-        .ok_or_else(|| anyhow!("voice subsystem not initialized"))?
-        .clone();
-    let call_lock = manager
+    let (_index, songbird) = state
+        .pool
+        .pick_free(guild_id)
+        .ok_or_else(|| anyhow!("All voice bots are busy right now."))?;
+    let call_lock = songbird
         .join(guild_id, channel_id)
         .await
         .map_err(|e| anyhow!("couldn't join the voice channel: {e}"))?;
@@ -216,22 +224,17 @@ pub async fn play_once_and_leave(
         let mut call = call_lock.lock().await;
         call.enqueue_input(input).await
     };
-
-    // Leave as soon as this single track ends.
     let _ = handle.add_event(
         Event::Track(TrackEvent::End),
         LeaveOnEnd {
-            manager: manager.clone(),
+            manager: songbird.clone(),
             guild_id,
         },
     );
     Ok(())
 }
 
-async fn build_source(
-    state: &crate::state::BotState,
-    arg: &str,
-) -> anyhow::Result<(Input, String)> {
+async fn build_source(state: &BotState, arg: &str) -> anyhow::Result<(Input, String)> {
     if arg.starts_with("http://") || arg.starts_with("https://") {
         let mut src = YoutubeDl::new(state.http.clone(), arg.to_string());
         let title = src
@@ -258,9 +261,9 @@ async fn build_source(
     }
 }
 
-/// Decode a local file through ffmpeg into raw f32 PCM that songbird plays
-/// directly — tolerant of any container/codec and of metadata tags (ID3v2)
-/// that would otherwise abort songbird's built-in decoder.
+/// Decode a local file through ffmpeg into raw f32 PCM — tolerant of any
+/// container/codec and of metadata tags (ID3v2) that would otherwise abort
+/// songbird's built-in decoder.
 fn ffmpeg_input(path: &std::path::Path) -> anyhow::Result<Input> {
     use songbird::input::core::io::ReadOnlySource;
     use std::process::{Command, Stdio};
@@ -281,38 +284,45 @@ fn ffmpeg_input(path: &std::path::Path) -> anyhow::Result<Input> {
 
 // ── controls (buttons) ───────────────────────────────────────────────────────
 
-fn controls_row() -> CreateActionRow {
+fn controls_row(bot_index: usize) -> CreateActionRow {
     CreateActionRow::Buttons(vec![
-        CreateButton::new("music_playpause")
+        CreateButton::new(format!("music_playpause:{bot_index}"))
             .label("⏯ Pause/Resume")
             .style(ButtonStyle::Secondary),
-        CreateButton::new("music_skip")
+        CreateButton::new(format!("music_skip:{bot_index}"))
             .label("⏭ Skip")
             .style(ButtonStyle::Secondary),
-        CreateButton::new("music_stop")
+        CreateButton::new(format!("music_stop:{bot_index}"))
             .label("⏹ Stop")
             .style(ButtonStyle::Danger),
     ])
+}
+
+/// Parse a control custom id like `music_skip:2` into `("music_skip", 2)`.
+fn parse_control(custom_id: &str) -> Option<(&str, usize)> {
+    let (action, index) = custom_id.rsplit_once(':')?;
+    Some((action, index.parse().ok()?))
 }
 
 pub async fn handle_component(
     ctx: &Context,
     component: &ComponentInteraction,
 ) -> anyhow::Result<()> {
-    let guild_id = match component.guild_id {
-        Some(g) => g,
-        None => return ack(ctx, component, "Use this in a server.").await,
+    let Some((action, index)) = parse_control(&component.data.custom_id) else {
+        return ack(ctx, component, "Unknown control.").await;
     };
-    let manager = match songbird::get(ctx).await {
-        Some(m) => m.clone(),
-        None => return ack(ctx, component, "Voice not available.").await,
+    let Some(guild_id) = component.guild_id else {
+        return ack(ctx, component, "Use this in a server.").await;
     };
-    let call_lock = match manager.get(guild_id) {
-        Some(c) => c,
-        None => return ack(ctx, component, "Nothing is playing.").await,
+    let state = super::state(ctx).await;
+    let Some(songbird) = state.pool.get(index) else {
+        return ack(ctx, component, "That player is no longer available.").await;
+    };
+    let Some(call_lock) = songbird.get(guild_id) else {
+        return ack(ctx, component, "Nothing is playing.").await;
     };
 
-    let msg = match component.data.custom_id.as_str() {
+    let msg = match action {
         "music_skip" => {
             let call = call_lock.lock().await;
             let _ = call.queue().skip();
@@ -323,7 +333,7 @@ pub async fn handle_component(
                 let call = call_lock.lock().await;
                 call.queue().stop();
             }
-            let _ = manager.remove(guild_id).await;
+            let _ = songbird.remove(guild_id).await;
             "⏹️ Stopped."
         }
         "music_playpause" => {
@@ -394,8 +404,7 @@ pub async fn handle_autocomplete(
 }
 
 /// Recursively list audio files under `base`, relative paths, filtered by a
-/// case-insensitive substring, capped at `limit`. Skips paths over 100 chars
-/// (Discord's autocomplete value limit). Bounded scan to keep it responsive.
+/// case-insensitive substring, capped at `limit` (and at 100 chars per path).
 pub fn list_music_files(base: &str, filter: &str, limit: usize) -> Vec<String> {
     let base_path = std::path::Path::new(base);
     let filter_l = filter.to_lowercase();
@@ -442,21 +451,32 @@ pub fn list_music_files(base: &str, filter: &str, limit: usize) -> Vec<String> {
 
 // ── pause / stop / queue / volume ───────────────────────────────────────────
 
+/// The pool bot to control for a slash command: the one in the user's current
+/// voice channel, else any active bot in the guild.
+async fn control_target(ctx: &Context, command: &CommandInteraction) -> Option<Arc<Songbird>> {
+    let guild_id = command.guild_id?;
+    let state = super::state(ctx).await;
+    if let Some(channel) = user_voice_channel(ctx, guild_id, command.user.id) {
+        if let Some(sb) = state.pool.bot_in_channel(guild_id, channel).await {
+            return Some(sb);
+        }
+    }
+    state.pool.any_active(guild_id)
+}
+
 async fn pause(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()> {
     let Some(guild_id) = command.guild_id else {
         return super::respond_ephemeral(ctx, command, "Use this in a server.").await;
     };
-    let manager = match songbird::get(ctx).await {
-        Some(m) => m.clone(),
-        None => return super::respond_ephemeral(ctx, command, "Voice not available.").await,
-    };
-
-    let msg = if let Some(call_lock) = manager.get(guild_id) {
-        let call = call_lock.lock().await;
-        let _ = call.queue().pause();
-        "⏸️ Paused."
-    } else {
-        "Nothing is playing."
+    let msg = match control_target(ctx, command).await {
+        Some(songbird) => {
+            if let Some(call_lock) = songbird.get(guild_id) {
+                let call = call_lock.lock().await;
+                let _ = call.queue().pause();
+            }
+            "⏸️ Paused."
+        }
+        None => "Nothing is playing.",
     };
     super::respond(ctx, command, msg).await
 }
@@ -465,20 +485,16 @@ async fn stop(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()>
     let Some(guild_id) = command.guild_id else {
         return super::respond_ephemeral(ctx, command, "Use this in a server.").await;
     };
-    let manager = match songbird::get(ctx).await {
-        Some(m) => m.clone(),
-        None => return super::respond_ephemeral(ctx, command, "Voice not available.").await,
-    };
-
-    let msg = if let Some(call_lock) = manager.get(guild_id) {
-        {
-            let call = call_lock.lock().await;
-            call.queue().stop();
+    let msg = match control_target(ctx, command).await {
+        Some(songbird) => {
+            if let Some(call_lock) = songbird.get(guild_id) {
+                let call = call_lock.lock().await;
+                call.queue().stop();
+            }
+            let _ = songbird.remove(guild_id).await;
+            "⏹️ Stopped and left the channel."
         }
-        let _ = manager.remove(guild_id).await;
-        "⏹️ Stopped and left the channel."
-    } else {
-        "Nothing is playing."
+        None => "Nothing is playing.",
     };
     super::respond(ctx, command, msg).await
 }
@@ -487,21 +503,21 @@ async fn queue(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()
     let Some(guild_id) = command.guild_id else {
         return super::respond_ephemeral(ctx, command, "Use this in a server.").await;
     };
-    let manager = match songbird::get(ctx).await {
-        Some(m) => m.clone(),
-        None => return super::respond_ephemeral(ctx, command, "Voice not available.").await,
-    };
-
-    let msg = if let Some(call_lock) = manager.get(guild_id) {
-        let call = call_lock.lock().await;
-        let n = call.queue().current_queue().len();
-        if n == 0 {
-            "The queue is empty.".to_string()
-        } else {
-            format!("🎶 {n} track(s) in the queue.")
+    let msg = match control_target(ctx, command).await {
+        Some(songbird) => {
+            if let Some(call_lock) = songbird.get(guild_id) {
+                let call = call_lock.lock().await;
+                let n = call.queue().current_queue().len();
+                if n == 0 {
+                    "The queue is empty.".to_string()
+                } else {
+                    format!("🎶 {n} track(s) in the queue.")
+                }
+            } else {
+                "Nothing is playing.".to_string()
+            }
         }
-    } else {
-        "Nothing is playing.".to_string()
+        None => "Nothing is playing.".to_string(),
     };
     super::respond(ctx, command, msg).await
 }
@@ -515,19 +531,17 @@ async fn volume(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<(
     let Some(guild_id) = command.guild_id else {
         return super::respond_ephemeral(ctx, command, "Use this in a server.").await;
     };
-    let manager = match songbird::get(ctx).await {
-        Some(m) => m.clone(),
-        None => return super::respond_ephemeral(ctx, command, "Voice not available.").await,
-    };
-
-    let msg = if let Some(call_lock) = manager.get(guild_id) {
-        let call = call_lock.lock().await;
-        if let Some(track) = call.queue().current() {
-            let _ = track.set_volume(vol);
+    let msg = match control_target(ctx, command).await {
+        Some(songbird) => {
+            if let Some(call_lock) = songbird.get(guild_id) {
+                let call = call_lock.lock().await;
+                if let Some(track) = call.queue().current() {
+                    let _ = track.set_volume(vol);
+                }
+            }
+            format!("🔊 Volume set to {level}%.")
         }
-        format!("🔊 Volume set to {level}%.")
-    } else {
-        "Nothing is playing.".to_string()
+        None => "Nothing is playing.".to_string(),
     };
     super::respond(ctx, command, msg).await
 }

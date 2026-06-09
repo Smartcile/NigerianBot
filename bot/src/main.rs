@@ -148,19 +148,56 @@ async fn main() -> anyhow::Result<()> {
     let http = reqwest::Client::new();
     let music_path = common::config::optional_or("MUSIC_MOUNT_PATH", "/music");
 
+    // Build the voice pool: one Songbird manager per bot (primary + extras).
+    let primary_songbird = songbird::Songbird::serenity();
+    let mut pool_bots = vec![state::VoiceBot {
+        songbird: primary_songbird.clone(),
+        label: "primary".to_string(),
+    }];
+    let mut worker_songbirds = Vec::new();
+    for i in 0..config.pool_tokens.len() {
+        let sb = songbird::Songbird::serenity();
+        worker_songbirds.push(sb.clone());
+        pool_bots.push(state::VoiceBot {
+            songbird: sb,
+            label: format!("bot-{}", i + 2),
+        });
+    }
+    let pool = state::VoicePool { bots: pool_bots };
+    let pool_size = pool.len();
+    let bot_state = state::BotState::new(db, http, music_path, pool);
+
     // GUILD_VOICE_STATES feeds the cache so we can find a user's voice channel.
-    let intents = GatewayIntents::GUILDS
+    let primary_intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::GUILD_VOICE_STATES;
+    // Worker bots only need voice; they don't handle commands or messages.
+    let worker_intents = GatewayIntents::GUILDS | GatewayIntents::GUILD_VOICE_STATES;
 
-    let mut client = Client::builder(&token, intents)
+    // Start the worker bots (each its own gateway connection for voice).
+    for (i, worker_token) in config.pool_tokens.iter().enumerate() {
+        let songbird = worker_songbirds[i].clone();
+        let mut worker = Client::builder(worker_token, worker_intents)
+            .register_songbird_with(songbird)
+            .await
+            .context("failed to build worker bot client")?;
+        let label = format!("bot-{}", i + 2);
+        tokio::spawn(async move {
+            info!(bot = %label, "starting voice-pool worker");
+            if let Err(e) = worker.start().await {
+                error!(bot = %label, ?e, "voice-pool worker error");
+            }
+        });
+    }
+
+    let mut client = Client::builder(&token, primary_intents)
         .event_handler(Handler { config })
-        .type_map_insert::<state::BotStateKey>(state::BotState::new(db, http, music_path))
-        .register_songbird()
+        .type_map_insert::<state::BotStateKey>(bot_state)
+        .register_songbird_with(primary_songbird)
         .await
         .context("failed to build Discord client")?;
 
-    info!("starting NigerianBot…");
+    info!(voice_bots = pool_size, "starting NigerianBot…");
     client.start().await.context("Discord client error")?;
 
     Ok(())

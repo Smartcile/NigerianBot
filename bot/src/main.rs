@@ -9,6 +9,7 @@ mod commands;
 mod config;
 mod handlers;
 mod services;
+mod state;
 
 use anyhow::Context as _;
 use serenity::all::{
@@ -70,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut client = Client::builder(&token, intents)
         .event_handler(Handler { config })
+        .type_map_insert::<state::BotStateKey>(state::BotState::new())
         .await
         .context("failed to build Discord client")?;
 

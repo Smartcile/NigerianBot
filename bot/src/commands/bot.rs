@@ -1,7 +1,10 @@
-//! `/bot` — bot control & diagnostics. Wired up alongside the API (Phase 4+).
+//! `/bot` — bot control & diagnostics.
+//!
+//! `/bot status` is live. The control actions (`logs`, `config`, `restart`)
+//! require the API/control-plane and role checks and arrive in Phase 4.
 
 use serenity::all::{
-    CommandInteraction, CommandOptionType, Context, CreateCommand, CreateCommandOption,
+    CommandInteraction, CommandOptionType, Context, CreateCommand, CreateCommandOption, CreateEmbed,
 };
 
 pub fn definition() -> CreateCommand {
@@ -38,11 +41,31 @@ pub fn definition() -> CreateCommand {
 }
 
 pub async fn handle(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()> {
-    let sub = super::subcommand_name(command);
-    super::respond(
-        ctx,
-        command,
-        format!("🤖 `/bot {sub}` is not implemented yet (Phase 4: API & control plane)."),
-    )
-    .await
+    match super::subcommand_name(command) {
+        "status" => status(ctx, command).await,
+        other => {
+            super::respond_ephemeral(
+                ctx,
+                command,
+                format!("🤖 `/bot {other}` needs the control plane and will arrive in Phase 4."),
+            )
+            .await
+        }
+    }
+}
+
+/// `/bot status` — live health snapshot of the bot process.
+async fn status(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()> {
+    let state = super::state(ctx).await;
+    let uptime = super::format_uptime(state.started_at.elapsed());
+
+    let embed = CreateEmbed::new()
+        .title("🤖 NigerianBot status")
+        .colour(0x57F287_u32)
+        .field("Status", "🟢 Online", true)
+        .field("Uptime", uptime, true)
+        .field("Version", env!("CARGO_PKG_VERSION"), true)
+        .field("Commands", super::all_definitions().len().to_string(), true);
+
+    super::respond_embed(ctx, command, embed).await
 }

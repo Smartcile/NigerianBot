@@ -1,4 +1,4 @@
-//! Slash command registry and dispatcher.
+//! Slash command registry, dispatcher, and shared response helpers.
 //!
 //! Each feature area lives in its own module and exposes:
 //!   * `definition()` — the [`CreateCommand`] registered with Discord
@@ -10,10 +10,16 @@ pub mod radar;
 pub mod server;
 pub mod sonar;
 
+use std::sync::Arc;
+use std::time::Duration;
+
 use serenity::all::{
-    CommandInteraction, Context, CreateCommand, CreateInteractionResponse,
+    CommandInteraction, Context, CreateCommand, CreateEmbed, CreateInteractionResponse,
     CreateInteractionResponseMessage,
 };
+use tracing::error;
+
+use crate::state::{BotState, BotStateKey};
 
 /// Every slash command definition registered with Discord on startup.
 pub fn all_definitions() -> Vec<CreateCommand> {
@@ -27,8 +33,25 @@ pub fn all_definitions() -> Vec<CreateCommand> {
     ]
 }
 
-/// Route an incoming command interaction to the appropriate handler.
+/// Route an incoming command interaction to its handler, and on failure send the
+/// user an ephemeral error (best effort) so they aren't left with a silent
+/// "interaction failed".
 pub async fn dispatch(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()> {
+    let result = route(ctx, command).await;
+    if let Err(ref e) = result {
+        error!(?e, command = %command.data.name, "command handler error");
+        // If the handler already replied this is a no-op; ignore the secondary error.
+        let _ = respond_ephemeral(
+            ctx,
+            command,
+            "⚠️ Something went wrong while handling that command. Please try again.",
+        )
+        .await;
+    }
+    result
+}
+
+async fn route(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()> {
     match command.data.name.as_str() {
         "ping" => respond(ctx, command, "🏓 Pong!").await,
         "music" => music::handle(ctx, command).await,
@@ -36,24 +59,56 @@ pub async fn dispatch(ctx: &Context, command: &CommandInteraction) -> anyhow::Re
         "radar" => radar::handle(ctx, command).await,
         "server" => server::handle(ctx, command).await,
         "bot" => bot::handle(ctx, command).await,
-        other => respond(ctx, command, &format!("Unknown command: `{other}`")).await,
+        other => respond_ephemeral(ctx, command, format!("Unknown command: `{other}`")).await,
     }
 }
 
-/// Send a simple ephemeral-free text reply for a command interaction.
+// ── Response helpers ───────────────────────────────────────────────────────
+
+/// Send a plain text reply.
 pub async fn respond(
     ctx: &Context,
     command: &CommandInteraction,
     content: impl Into<String>,
 ) -> anyhow::Result<()> {
-    let response = CreateInteractionResponse::Message(
-        CreateInteractionResponseMessage::new().content(content.into()),
-    );
-    command.create_response(&ctx.http, response).await?;
+    let msg = CreateInteractionResponseMessage::new().content(content.into());
+    command
+        .create_response(&ctx.http, CreateInteractionResponse::Message(msg))
+        .await?;
     Ok(())
 }
 
-/// Name of the invoked subcommand, if any (e.g. `play` for `/music play`).
+/// Send an ephemeral text reply (only the invoking user sees it).
+pub async fn respond_ephemeral(
+    ctx: &Context,
+    command: &CommandInteraction,
+    content: impl Into<String>,
+) -> anyhow::Result<()> {
+    let msg = CreateInteractionResponseMessage::new()
+        .content(content.into())
+        .ephemeral(true);
+    command
+        .create_response(&ctx.http, CreateInteractionResponse::Message(msg))
+        .await?;
+    Ok(())
+}
+
+/// Send an embed reply.
+pub async fn respond_embed(
+    ctx: &Context,
+    command: &CommandInteraction,
+    embed: CreateEmbed,
+) -> anyhow::Result<()> {
+    let msg = CreateInteractionResponseMessage::new().embed(embed);
+    command
+        .create_response(&ctx.http, CreateInteractionResponse::Message(msg))
+        .await?;
+    Ok(())
+}
+
+// ── Shared helpers ─────────────────────────────────────────────────────────
+
+/// Name of the invoked subcommand, if any (e.g. `status` for `/bot status`).
 pub fn subcommand_name(command: &CommandInteraction) -> &str {
     command
         .data
@@ -61,4 +116,32 @@ pub fn subcommand_name(command: &CommandInteraction) -> &str {
         .first()
         .map(|o| o.name.as_str())
         .unwrap_or("")
+}
+
+/// Fetch the shared [`BotState`] from the client's type map.
+pub async fn state(ctx: &Context) -> Arc<BotState> {
+    ctx.data
+        .read()
+        .await
+        .get::<BotStateKey>()
+        .cloned()
+        .expect("BotState is inserted at startup")
+}
+
+/// Human-friendly uptime like `2d 3h 7m 12s`.
+pub fn format_uptime(d: Duration) -> String {
+    let s = d.as_secs();
+    let (days, hours, mins, secs) = (s / 86_400, (s % 86_400) / 3_600, (s % 3_600) / 60, s % 60);
+    let mut parts = Vec::new();
+    if days > 0 {
+        parts.push(format!("{days}d"));
+    }
+    if hours > 0 {
+        parts.push(format!("{hours}h"));
+    }
+    if mins > 0 {
+        parts.push(format!("{mins}m"));
+    }
+    parts.push(format!("{secs}s"));
+    parts.join(" ")
 }

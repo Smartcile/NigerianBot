@@ -1,8 +1,12 @@
 # syntax=docker/dockerfile:1
+#
+# Bot service image. Lives at the repo ROOT (not in bot/) on purpose: Portainer's
+# compose builder mis-resolves a `dockerfile:` that points into a subdirectory,
+# so keeping Dockerfiles at the build-context root keeps `Pull and redeploy`
+# working. Build context is the repo root, so the whole Cargo workspace is
+# available and `common` resolves correctly.
 
 # ─── Build stage ───────────────────────────────────────────────────────────
-# Build context is the repo ROOT (see docker-compose.yml), so the whole Cargo
-# workspace is available and `common` resolves correctly.
 FROM rust:1-bookworm AS builder
 WORKDIR /app
 

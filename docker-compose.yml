@@ -11,7 +11,7 @@ services:
   bot:
     build:
       context: .
-      dockerfile: bot/Dockerfile
+      dockerfile: Dockerfile.bot
     image: nigerianbot/bot:latest
     container_name: nigerian-bot
     restart: unless-stopped

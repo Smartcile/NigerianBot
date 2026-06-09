@@ -17,7 +17,7 @@ use serenity::all::{
     CommandInteraction, Context, CreateCommand, CreateEmbed, CreateInteractionResponse,
     CreateInteractionResponseMessage,
 };
-use tracing::error;
+use tracing::{error, warn};
 
 use crate::state::{BotState, BotStateKey};
 
@@ -37,6 +37,14 @@ pub fn all_definitions() -> Vec<CreateCommand> {
 /// user an ephemeral error (best effort) so they aren't left with a silent
 /// "interaction failed".
 pub async fn dispatch(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()> {
+    // Best-effort audit logging — never let a DB hiccup block the command.
+    let bot_state = state(ctx).await;
+    if let Some(pool) = &bot_state.db {
+        if let Err(e) = crate::audit::record(pool, command).await {
+            warn!(?e, "failed to write audit log entry");
+        }
+    }
+
     let result = route(ctx, command).await;
     if let Err(ref e) = result {
         error!(?e, command = %command.data.name, "command handler error");

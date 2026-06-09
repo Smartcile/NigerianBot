@@ -57,7 +57,23 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
 ## Phase status
 
 - **Phase 1 — DONE:** workspace, four service skeletons, `common` crate, bot
-  connects and registers all slash command definitions; non-`ping` commands
-  reply with a "not implemented (Phase N)" placeholder.
-- Phases 2–11: see the project plan (commands, migrations, API auth, Sonar/Radar,
-  music, dashboard, scheduler/worker logic, Docker, CI/CD, docs).
+  connects and registers slash commands. Verified live on the user's server.
+- **Phase 2 — DONE:** command framework — shared `BotState` in `ctx.data`, embed/
+  ephemeral helpers, error-catching dispatcher, live `/bot status` & `/server info`.
+  Reused-bot fix: clears stale global commands when a guild is configured.
+- **Phase 3 — DONE:** PostgreSQL. `migrations/0001_init.sql` (7 tables). Bot
+  connects on startup (retry) and runs `sqlx::migrate!` automatically; pool lives
+  in `BotState.db`. Every command is audit-logged; `/bot status` shows DB health +
+  logged count. Postgres added to the Portainer stack (compose). Note: queries use
+  runtime `sqlx::query` (not the `query!` macro) so CI builds need no live DB; the
+  Dockerfile copies `migrations/` so `migrate!` can embed them.
+- Phases 4–11: API auth, Sonar/Radar, music, dashboard, scheduler/worker logic,
+  Docker hardening, CI/CD, docs.
+
+## Deploy / CI cheatsheet
+
+Push to `main` → `.github/workflows/build.yml` builds `Dockerfile.bot` → pushes
+`ghcr.io/smartcile/nigerianbot-bot:latest` (GHCR package is public) → user does
+"Pull and redeploy" in Portainer. Never use compose `build:` in Portainer (its
+builder mis-resolves paths) and never use `cache-to: type=gha` (504s). Use the
+full path to `gh`: `C:\Program Files\GitHub CLI\gh.exe`.

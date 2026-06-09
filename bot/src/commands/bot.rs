@@ -59,13 +59,28 @@ async fn status(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<(
     let state = super::state(ctx).await;
     let uptime = super::format_uptime(state.started_at.elapsed());
 
+    // Report database health and how many commands have been audit-logged.
+    let (db_status, logged) = match &state.db {
+        Some(pool) => match crate::audit::count(pool).await {
+            Ok(n) => ("🟢 Connected", n.to_string()),
+            Err(_) => ("🟠 Error", "—".to_string()),
+        },
+        None => ("⚪ Not configured", "—".to_string()),
+    };
+
     let embed = CreateEmbed::new()
         .title("🤖 NigerianBot status")
         .colour(0x57F287_u32)
         .field("Status", "🟢 Online", true)
         .field("Uptime", uptime, true)
         .field("Version", env!("CARGO_PKG_VERSION"), true)
-        .field("Commands", super::all_definitions().len().to_string(), true);
+        .field("Database", db_status, true)
+        .field("Commands logged", logged, true)
+        .field(
+            "Commands available",
+            super::all_definitions().len().to_string(),
+            true,
+        );
 
     super::respond_embed(ctx, command, embed).await
 }

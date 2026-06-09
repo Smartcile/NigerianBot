@@ -18,7 +18,7 @@ anyhow = "1"
 thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "macros", "chrono", "uuid"] }
+sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "macros", "migrate", "chrono", "uuid"] }
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 dotenvy = "0.15"
 chrono = { version = "0.4", features = ["serde"] }

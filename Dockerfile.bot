@@ -17,6 +17,9 @@ COPY bot ./bot
 COPY api ./api
 COPY scheduler ./scheduler
 COPY worker ./worker
+# Migrations are embedded into the binary at build time via sqlx::migrate!,
+# so they must be present in the build context.
+COPY migrations ./migrations
 
 RUN cargo build --release -p bot
 

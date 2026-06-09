@@ -2,22 +2,26 @@
 //!
 //! Stored in serenity's per-client `TypeMap` (`ctx.data`) so every command
 //! handler can read it without global statics. Extend `BotState` in later phases
-//! with the database pool, external-service HTTP clients, cached config, etc.
+//! with external-service HTTP clients, cached config, etc.
 
 use std::sync::Arc;
 use std::time::Instant;
 
 use serenity::prelude::TypeMapKey;
+use sqlx::PgPool;
 
 pub struct BotState {
     /// When the process started — used to compute uptime for `/bot status`.
     pub started_at: Instant,
+    /// Database pool, present when `DATABASE_URL` is configured.
+    pub db: Option<PgPool>,
 }
 
 impl BotState {
-    pub fn new() -> Arc<Self> {
+    pub fn new(db: Option<PgPool>) -> Arc<Self> {
         Arc::new(Self {
             started_at: Instant::now(),
+            db,
         })
     }
 }

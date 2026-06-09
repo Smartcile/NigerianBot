@@ -1,23 +1,49 @@
-# NigerianBot — Phase 1 stack (Discord bot only).
+# NigerianBot — Phase 3 stack (Discord bot + PostgreSQL).
 #
-# The image is built by GitHub Actions and published to GHCR, so Portainer just
-# PULLS it — your server never compiles anything. Deploy as a Stack in Portainer
-# (Stacks → Add stack → Repository), set DISCORD_TOKEN (and optionally
-# DISCORD_GUILD_ID) under "Environment variables", and deploy.
+# The bot image is built by GitHub Actions and published to GHCR, so Portainer
+# just PULLS it. Deploy as a Stack in Portainer (Stacks → Add stack →
+# Repository) and set these under "Environment variables":
+#   DISCORD_TOKEN      (required)  your Discord bot token
+#   DISCORD_GUILD_ID   (optional)  your server id for instant command registration
+#   POSTGRES_PASSWORD  (required)  any strong password you choose for the database
 #
-# Later phases add postgres, redis, api, scheduler, worker, and the dashboard.
+# Later phases add redis, api, scheduler, worker, and the dashboard.
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nigerian-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nigerian}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in Portainer env}
+      POSTGRES_DB: ${POSTGRES_DB:-nigerian_bot}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nigerian} -d ${POSTGRES_DB:-nigerian_bot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   bot:
     image: ghcr.io/smartcile/nigerianbot-bot:latest
     container_name: nigerian-bot
     restart: unless-stopped
     pull_policy: always
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       # Required: your Discord bot token.
       DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN in Portainer env}
       # Optional but recommended for testing: your server (guild) id makes slash
       # commands register instantly instead of taking up to ~1 hour globally.
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      # Built from the postgres settings above; `postgres` is the service hostname.
+      DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
       # Log verbosity: info | debug | trace
       RUST_LOG: ${RUST_LOG:-info}
+
+volumes:
+  pgdata:

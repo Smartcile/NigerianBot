@@ -5,6 +5,7 @@
 //! modules. Most handlers currently return a "not implemented yet" placeholder
 //! that names the phase where they get fleshed out.
 
+mod audit;
 mod commands;
 mod config;
 mod handlers;
@@ -16,7 +17,7 @@ use serenity::all::{
     Client, Command, Context, EventHandler, GatewayIntents, GuildId, Interaction, Ready,
 };
 use serenity::async_trait;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::config::BotConfig;
 
@@ -67,6 +68,24 @@ impl EventHandler for Handler {
     }
 }
 
+/// Connect to Postgres, retrying briefly so the bot tolerates the database
+/// still warming up (e.g. on first stack startup).
+async fn connect_db_with_retry(url: &str) -> anyhow::Result<sqlx::PgPool> {
+    const MAX_ATTEMPTS: u32 = 10;
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match common::db::connect(url).await {
+            Ok(pool) => return Ok(pool),
+            Err(e) if attempt < MAX_ATTEMPTS => {
+                warn!(attempt, error = %e, "database not ready, retrying in 2s");
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            Err(e) => return Err(e.context("could not connect to the database")),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     common::config::load_dotenv();
@@ -74,6 +93,23 @@ async fn main() -> anyhow::Result<()> {
 
     let config = BotConfig::from_env().context("invalid bot configuration")?;
     let token = config.discord_token.clone();
+
+    // Connect to Postgres and apply migrations when a database is configured.
+    let db = match config.database_url.clone() {
+        Some(url) => {
+            let pool = connect_db_with_retry(&url).await?;
+            sqlx::migrate!("../migrations")
+                .run(&pool)
+                .await
+                .context("failed to run database migrations")?;
+            info!("database connected and migrations applied");
+            Some(pool)
+        }
+        None => {
+            info!("no DATABASE_URL set — running without persistence");
+            None
+        }
+    };
 
     // GUILD_VOICE_STATES is needed for music (Phase 6); the rest cover commands
     // and basic guild/message events.
@@ -83,7 +119,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut client = Client::builder(&token, intents)
         .event_handler(Handler { config })
-        .type_map_insert::<state::BotStateKey>(state::BotState::new())
+        .type_map_insert::<state::BotStateKey>(state::BotState::new(db))
         .await
         .context("failed to build Discord client")?;
 

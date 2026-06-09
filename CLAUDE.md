@@ -86,6 +86,18 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   "apt-get update -qq && apt-get install -y -qq cmake libopus-dev pkg-config
   libssl-dev && cargo check -p bot"` (use `bash -c`, NOT `-lc` — login shell drops
   cargo from PATH).
+- **Phase 6 follow-ups (DONE):** music UX — Pause/Skip/Stop buttons on the
+  now-playing message (component interactions, custom_id `music_*`), `/music play`
+  song autocomplete from the local library, 3-min idle auto-leave (songbird
+  `Event::Periodic` watchdog), and `/autoplay` (pick voice channel + song; fires
+  on `voice_state_update`, stored in `voice_triggers`). Local files are decoded
+  via **ffmpeg → f32 PCM → `RawAdapter`** (songbird's symphonia ships with NO
+  codecs enabled by default — the bot enables them via a direct `symphonia`
+  dep with `features=["all"]`, which provides the PCM decoder).
+- **CI caching (DONE):** Dockerfiles use **cargo-chef** + GHCR registry cache
+  (`cache-from/to type=registry ...:buildcache`). Dependency-only changes are
+  slow once; code-only changes build in ~90s (was 20+ min). Verify Docker builds
+  locally with the cached volumes `nb_target` / `nb_cargo` (see Phase 6 note).
 - Phases 5, 7–11: Sonar/Radar, dashboard, scheduler/worker logic, Docker
   hardening, CI/CD polish, docs.
 

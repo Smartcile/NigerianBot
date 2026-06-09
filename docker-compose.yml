@@ -9,6 +9,7 @@
 #   API_KEY            (required)  secret to log into the API (the one generated earlier)
 #   JWT_SECRET         (required)  secret used to sign API tokens (generated earlier)
 #   API_PORT           (optional)  port the API listens on / is published on (default 8000)
+#   MUSIC_HOST_PATH    (optional)  path to your music folder on the server (default ./music)
 #
 # Later phases add redis, scheduler, worker, and the dashboard.
 
@@ -45,8 +46,14 @@ services:
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
       # Built from the postgres settings above; `postgres` is the service hostname.
       DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
+      # Folder (inside the container) where local music files live.
+      MUSIC_MOUNT_PATH: /music
       # Log verbosity: info | debug | trace
       RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      # Mounts your music folder read-only into the container at /music.
+      # Set MUSIC_HOST_PATH in Portainer to your music drive/folder on the server.
+      - ${MUSIC_HOST_PATH:-./music}:/music:ro
 
   api:
     image: ghcr.io/smartcile/nigerianbot-api:latest

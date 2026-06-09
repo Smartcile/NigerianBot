@@ -17,6 +17,7 @@ use serenity::all::{
     Client, Command, Context, EventHandler, GatewayIntents, GuildId, Interaction, Ready,
 };
 use serenity::async_trait;
+use songbird::SerenityInit;
 use tracing::{error, info, warn};
 
 use crate::config::BotConfig;
@@ -111,15 +112,19 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // GUILD_VOICE_STATES is needed for music (Phase 6); the rest cover commands
-    // and basic guild/message events.
+    // Music: HTTP client for URL/yt-dlp sources and the mounted music directory.
+    let http = reqwest::Client::new();
+    let music_path = common::config::optional_or("MUSIC_MOUNT_PATH", "/music");
+
+    // GUILD_VOICE_STATES feeds the cache so we can find a user's voice channel.
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::GUILD_VOICE_STATES;
 
     let mut client = Client::builder(&token, intents)
         .event_handler(Handler { config })
-        .type_map_insert::<state::BotStateKey>(state::BotState::new(db))
+        .type_map_insert::<state::BotStateKey>(state::BotState::new(db, http, music_path))
+        .register_songbird()
         .await
         .context("failed to build Discord client")?;
 

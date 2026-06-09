@@ -19,13 +19,16 @@ thiserror = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls", "macros", "migrate", "chrono", "uuid"] }
+# Pinned to 0.11 to match songbird 0.4's reqwest (the YoutubeDl source takes a
+# reqwest::Client, so the versions must agree).
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 dotenvy = "0.15"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # Discord bot
-serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model"] }
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "voice", "cache"] }
+songbird = { version = "0.4", features = ["builtin-queue"] }
 
 # API backend
 actix-web = "4"

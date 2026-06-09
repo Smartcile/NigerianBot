@@ -74,7 +74,19 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   `Dockerfile.api` + CI matrix builds both `nigerianbot-bot` and `nigerianbot-api`
   on GHCR. `api` service added to the stack, exposed on port 8000. The
   `nigerianbot-api` GHCR package must be made public once (like the bot did).
-- Phases 5–11: Sonar/Radar, music, dashboard, scheduler/worker logic, Docker
+- **Phase 6 — DONE (music, before Phase 5 at user request):** songbird voice
+  playback. `/music play|pause|stop|queue|volume`; sources are local files under
+  `MUSIC_MOUNT_PATH` or URLs/YouTube via yt-dlp. Needs serenity `voice`+`cache`
+  features and **reqwest 0.11** (songbird 0.4.6's `YoutubeDl` takes a 0.11
+  Client — do NOT bump to 0.12). `Dockerfile.bot` installs cmake+libopus to build
+  and ffmpeg+yt-dlp+libopus0 at runtime. Compose mounts `MUSIC_HOST_PATH`→`/music`
+  read-only. Verify the bot build locally with Docker (songbird won't build on
+  Windows — no cmake): `docker run --rm -v "<repo>:/app" -v nb_target:/app/target
+  -v nb_cargo:/usr/local/cargo/registry -w /app rust:1-bookworm bash -c
+  "apt-get update -qq && apt-get install -y -qq cmake libopus-dev pkg-config
+  libssl-dev && cargo check -p bot"` (use `bash -c`, NOT `-lc` — login shell drops
+  cargo from PATH).
+- Phases 5, 7–11: Sonar/Radar, dashboard, scheduler/worker logic, Docker
   hardening, CI/CD polish, docs.
 
 ## Deploy / CI cheatsheet

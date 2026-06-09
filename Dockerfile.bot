@@ -1,13 +1,17 @@
 # syntax=docker/dockerfile:1
 #
-# Bot service image. Lives at the repo ROOT (not in bot/) on purpose: Portainer's
-# compose builder mis-resolves a `dockerfile:` that points into a subdirectory,
-# so keeping Dockerfiles at the build-context root keeps `Pull and redeploy`
-# working. Build context is the repo root, so the whole Cargo workspace is
-# available and `common` resolves correctly.
+# Bot service image. Lives at the repo ROOT (Portainer mis-resolves Dockerfiles
+# in subdirectories). Build context is the repo root so the whole Cargo
+# workspace and the migrations directory are available.
 
 # ─── Build stage ───────────────────────────────────────────────────────────
 FROM rust:1-bookworm AS builder
+
+# songbird's audio stack (audiopus) needs cmake + libopus to build.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends cmake libopus-dev pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy the workspace. Only `-p bot` (and its deps) actually gets compiled.
@@ -24,10 +28,14 @@ COPY migrations ./migrations
 RUN cargo build --release -p bot
 
 # ─── Runtime stage ─────────────────────────────────────────────────────────
-# Slim image; ca-certificates is required for TLS to the Discord gateway/API.
+# Needs: ca-certificates (TLS), libopus0 (voice encoding), ffmpeg + yt-dlp
+# (audio decoding and URL/YouTube streaming).
 FROM debian:bookworm-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg libopus0 curl \
+    && curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
+        -o /usr/local/bin/yt-dlp \
+    && chmod a+rx /usr/local/bin/yt-dlp \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/nigerian-bot /usr/local/bin/nigerian-bot

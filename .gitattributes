@@ -1,0 +1,8 @@
+# Normalize line endings: store as LF in the repo so Linux containers and CI
+# always get LF regardless of the OS that committed.
+* text=auto eol=lf
+
+# Binary files Git should never touch.
+*.png binary
+*.jpg binary
+*.ico binary

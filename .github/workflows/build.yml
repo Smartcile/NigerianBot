@@ -52,5 +52,6 @@ jobs:
           tags: |
             ${{ steps.img.outputs.name }}:latest
             ${{ steps.img.outputs.name }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Note: the type=gha cache backend was removed — it intermittently
+          # returns 504s on layer-blob writes. Add a registry-based cache later
+          # if build times become a problem.

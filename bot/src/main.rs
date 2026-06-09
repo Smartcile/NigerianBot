@@ -31,18 +31,30 @@ impl EventHandler for Handler {
 
         let definitions = commands::all_definitions();
 
-        let result = match self.config.guild_id {
-            Some(id) => GuildId::new(id)
-                .set_commands(&ctx.http, definitions)
-                .await
-                .map(|cmds| info!(guild = id, count = cmds.len(), "registered guild commands")),
-            None => Command::set_global_commands(&ctx.http, definitions)
-                .await
-                .map(|cmds| info!(count = cmds.len(), "registered global commands")),
-        };
+        match self.config.guild_id {
+            Some(id) => {
+                // Guild-scoped registration overwrites the whole command set for
+                // this guild (instant propagation).
+                match GuildId::new(id).set_commands(&ctx.http, definitions).await {
+                    Ok(cmds) => info!(guild = id, count = cmds.len(), "registered guild commands"),
+                    Err(e) => error!(?e, "failed to register guild commands"),
+                }
 
-        if let Err(e) = result {
-            error!(?e, "failed to register slash commands");
+                // Also clear any GLOBAL commands left over from this app's
+                // previous life, so only the guild-scoped set above shows up in
+                // the slash-command picker (no stale duplicates).
+                match Command::set_global_commands(&ctx.http, Vec::new()).await {
+                    Ok(_) => info!("cleared stale global commands"),
+                    Err(e) => error!(?e, "failed to clear global commands"),
+                }
+            }
+            None => {
+                // No guild configured: register globally (overwrites all globals).
+                match Command::set_global_commands(&ctx.http, definitions).await {
+                    Ok(cmds) => info!(count = cmds.len(), "registered global commands"),
+                    Err(e) => error!(?e, "failed to register global commands"),
+                }
+            }
         }
     }
 

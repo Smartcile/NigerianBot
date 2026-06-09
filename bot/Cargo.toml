@@ -12,6 +12,11 @@ path = "src/main.rs"
 common.workspace = true
 serenity.workspace = true
 songbird.workspace = true
+# songbird 0.6 pulls in symphonia but enables NO codecs by default; declaring it
+# here with codecs on turns them on (via cargo feature unification) so songbird
+# can actually decode audio — including the PCM decoder that the ffmpeg-piped
+# local-file path relies on, and the formats yt-dlp serves for URLs.
+symphonia = { version = "0.5", features = ["all"] }
 tokio.workspace = true
 sqlx.workspace = true
 reqwest.workspace = true

@@ -14,7 +14,7 @@ mod state;
 
 use anyhow::Context as _;
 use serenity::all::{
-    Client, Command, Context, EventHandler, GatewayIntents, GuildId, Interaction, Ready,
+    Client, Command, Context, EventHandler, GatewayIntents, GuildId, Interaction, Ready, VoiceState,
 };
 use serenity::async_trait;
 use songbird::SerenityInit;
@@ -61,11 +61,39 @@ impl EventHandler for Handler {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::Command(command) = interaction {
-            if let Err(e) = commands::dispatch(&ctx, &command).await {
-                error!(?e, command = %command.data.name, "command handler failed");
+        match interaction {
+            Interaction::Command(command) => {
+                if let Err(e) = commands::dispatch(&ctx, &command).await {
+                    error!(?e, command = %command.data.name, "command handler failed");
+                }
             }
+            Interaction::Autocomplete(command) => {
+                if let Err(e) = commands::dispatch_autocomplete(&ctx, &command).await {
+                    error!(?e, "autocomplete handler failed");
+                }
+            }
+            Interaction::Component(component) => {
+                if let Err(e) = commands::dispatch_component(&ctx, &component).await {
+                    error!(?e, "component handler failed");
+                }
+            }
+            _ => {}
         }
+    }
+
+    async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
+        let (Some(guild_id), Some(channel_id)) = (new.guild_id, new.channel_id) else {
+            return;
+        };
+        // Ignore the bot's own voice updates.
+        if new.user_id == ctx.cache.current_user().id {
+            return;
+        }
+        // Only react to an actual join/move into the channel (not mute/deafen).
+        if old.and_then(|o| o.channel_id) == Some(channel_id) {
+            return;
+        }
+        commands::autoplay::maybe_autoplay(&ctx, guild_id, channel_id).await;
     }
 }
 

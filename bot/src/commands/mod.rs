@@ -4,6 +4,7 @@
 //!   * `definition()` — the [`CreateCommand`] registered with Discord
 //!   * `handle()`     — the async handler invoked when the command is used
 
+pub mod autoplay;
 pub mod bot;
 pub mod music;
 pub mod radar;
@@ -14,8 +15,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serenity::all::{
-    CommandInteraction, Context, CreateCommand, CreateEmbed, CreateInteractionResponse,
-    CreateInteractionResponseMessage,
+    ChannelId, CommandDataOptionValue, CommandInteraction, ComponentInteraction, Context,
+    CreateCommand, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
 };
 use tracing::{error, warn};
 
@@ -30,6 +31,7 @@ pub fn all_definitions() -> Vec<CreateCommand> {
         radar::definition(),
         server::definition(),
         bot::definition(),
+        autoplay::definition(),
     ]
 }
 
@@ -67,7 +69,32 @@ async fn route(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()
         "radar" => radar::handle(ctx, command).await,
         "server" => server::handle(ctx, command).await,
         "bot" => bot::handle(ctx, command).await,
+        "autoplay" => autoplay::handle(ctx, command).await,
         other => respond_ephemeral(ctx, command, format!("Unknown command: `{other}`")).await,
+    }
+}
+
+/// Route an autocomplete interaction to the command that owns the focused option.
+pub async fn dispatch_autocomplete(
+    ctx: &Context,
+    command: &CommandInteraction,
+) -> anyhow::Result<()> {
+    match command.data.name.as_str() {
+        "music" => music::handle_autocomplete(ctx, command).await,
+        "autoplay" => autoplay::handle_autocomplete(ctx, command).await,
+        _ => Ok(()),
+    }
+}
+
+/// Route a message-component (button) interaction by its custom id prefix.
+pub async fn dispatch_component(
+    ctx: &Context,
+    component: &ComponentInteraction,
+) -> anyhow::Result<()> {
+    if component.data.custom_id.starts_with("music_") {
+        music::handle_component(ctx, component).await
+    } else {
+        Ok(())
     }
 }
 
@@ -124,6 +151,45 @@ pub fn subcommand_name(command: &CommandInteraction) -> &str {
         .first()
         .map(|o| o.name.as_str())
         .unwrap_or("")
+}
+
+/// Options of the invoked subcommand (the nested options under e.g. `/music play`).
+fn subcommand_options(command: &CommandInteraction) -> &[serenity::all::CommandDataOption] {
+    match command.data.options.first() {
+        Some(o) => match &o.value {
+            CommandDataOptionValue::SubCommand(opts)
+            | CommandDataOptionValue::SubCommandGroup(opts) => opts,
+            _ => &[],
+        },
+        None => &[],
+    }
+}
+
+/// Read a string option from the invoked subcommand.
+pub fn sub_option_str<'a>(command: &'a CommandInteraction, name: &str) -> Option<&'a str> {
+    subcommand_options(command)
+        .iter()
+        .find(|o| o.name == name)
+        .and_then(|o| o.value.as_str())
+}
+
+/// Read an integer option from the invoked subcommand.
+pub fn sub_option_i64(command: &CommandInteraction, name: &str) -> Option<i64> {
+    subcommand_options(command)
+        .iter()
+        .find(|o| o.name == name)
+        .and_then(|o| o.value.as_i64())
+}
+
+/// Read a channel option from the invoked subcommand.
+pub fn sub_option_channel(command: &CommandInteraction, name: &str) -> Option<ChannelId> {
+    subcommand_options(command)
+        .iter()
+        .find(|o| o.name == name)
+        .and_then(|o| match &o.value {
+            CommandDataOptionValue::Channel(id) => Some(*id),
+            _ => None,
+        })
 }
 
 /// Fetch the shared [`BotState`] from the client's type map.

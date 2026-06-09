@@ -1,20 +1,18 @@
 # NigerianBot — Phase 1 stack (Discord bot only).
 #
-# Deploy this as a Stack in Portainer (Stacks → Add stack → Repository, or paste
-# this file under "Web editor"). Set DISCORD_TOKEN (and optionally
-# DISCORD_GUILD_ID) in Portainer's "Environment variables" section — do NOT put
-# real secrets in this file or commit them to Git.
+# The image is built by GitHub Actions and published to GHCR, so Portainer just
+# PULLS it — your server never compiles anything. Deploy as a Stack in Portainer
+# (Stacks → Add stack → Repository), set DISCORD_TOKEN (and optionally
+# DISCORD_GUILD_ID) under "Environment variables", and deploy.
 #
 # Later phases add postgres, redis, api, scheduler, worker, and the dashboard.
 
 services:
   bot:
-    build:
-      context: .
-      dockerfile: Dockerfile.bot
-    image: nigerianbot/bot:latest
+    image: ghcr.io/smartcile/nigerianbot-bot:latest
     container_name: nigerian-bot
     restart: unless-stopped
+    pull_policy: always
     environment:
       # Required: your Discord bot token.
       DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN in Portainer env}

@@ -1,0 +1,56 @@
+name: Build & push bot image
+
+# Builds the bot Docker image on GitHub's runners and pushes it to the GitHub
+# Container Registry (GHCR). Portainer then just pulls the prebuilt image, so the
+# server never compiles Rust and never has to build from a Dockerfile.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "bot/**"
+      - "common/**"
+      - "api/**"
+      - "scheduler/**"
+      - "worker/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "Dockerfile.bot"
+      - ".github/workflows/build.yml"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # GHCR requires a lowercase image path.
+      - name: Compute image name
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/nigerianbot-bot" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.bot
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ${{ steps.img.outputs.name }}:latest
+            ${{ steps.img.outputs.name }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

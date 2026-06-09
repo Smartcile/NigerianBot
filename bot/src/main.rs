@@ -93,6 +93,10 @@ impl EventHandler for Handler {
         if old.and_then(|o| o.channel_id) == Some(channel_id) {
             return;
         }
+        // One-shot join sounds take priority; otherwise fall through to autoplay.
+        if commands::joinsound::maybe_play_joinsound(&ctx, guild_id, channel_id).await {
+            return;
+        }
         commands::autoplay::maybe_autoplay(&ctx, guild_id, channel_id).await;
     }
 }

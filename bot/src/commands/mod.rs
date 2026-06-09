@@ -6,6 +6,7 @@
 
 pub mod autoplay;
 pub mod bot;
+pub mod joinsound;
 pub mod music;
 pub mod radar;
 pub mod server;
@@ -32,6 +33,7 @@ pub fn all_definitions() -> Vec<CreateCommand> {
         server::definition(),
         bot::definition(),
         autoplay::definition(),
+        joinsound::definition(),
     ]
 }
 
@@ -70,6 +72,7 @@ async fn route(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()
         "server" => server::handle(ctx, command).await,
         "bot" => bot::handle(ctx, command).await,
         "autoplay" => autoplay::handle(ctx, command).await,
+        "joinsound" => joinsound::handle(ctx, command).await,
         other => respond_ephemeral(ctx, command, format!("Unknown command: `{other}`")).await,
     }
 }
@@ -82,6 +85,7 @@ pub async fn dispatch_autocomplete(
     match command.data.name.as_str() {
         "music" => music::handle_autocomplete(ctx, command).await,
         "autoplay" => autoplay::handle_autocomplete(ctx, command).await,
+        "joinsound" => joinsound::handle_autocomplete(ctx, command).await,
         _ => Ok(()),
     }
 }

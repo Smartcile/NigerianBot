@@ -18,7 +18,7 @@ use serenity::all::{
 };
 use songbird::input::{ChildContainer, Compose, Input, RawAdapter, YoutubeDl};
 use songbird::tracks::PlayMode;
-use songbird::{Event, EventContext, Songbird};
+use songbird::{Event, EventContext, Songbird, TrackEvent};
 use tracing::warn;
 
 const AUDIO_EXTS: &[&str] = &["mp3", "flac", "wav", "ogg", "m4a", "opus", "aac", "wma"];
@@ -189,6 +189,43 @@ pub async fn play_source_in_channel(
     }
 
     Ok((title, was_empty))
+}
+
+/// Join `channel_id`, play `source` once, and leave when it finishes.
+/// Used by `/joinsound` for entrance sounds. Builds the source first so a bad
+/// file/URL fails before the bot joins.
+pub async fn play_once_and_leave(
+    ctx: &Context,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+    source: &str,
+) -> anyhow::Result<()> {
+    let state = super::state(ctx).await;
+    let (input, _title) = build_source(&state, source).await?;
+
+    let manager = songbird::get(ctx)
+        .await
+        .ok_or_else(|| anyhow!("voice subsystem not initialized"))?
+        .clone();
+    let call_lock = manager
+        .join(guild_id, channel_id)
+        .await
+        .map_err(|e| anyhow!("couldn't join the voice channel: {e}"))?;
+
+    let handle = {
+        let mut call = call_lock.lock().await;
+        call.enqueue_input(input).await
+    };
+
+    // Leave as soon as this single track ends.
+    let _ = handle.add_event(
+        Event::Track(TrackEvent::End),
+        LeaveOnEnd {
+            manager: manager.clone(),
+            guild_id,
+        },
+    );
+    Ok(())
 }
 
 async fn build_source(
@@ -529,6 +566,20 @@ impl songbird::EventHandler for IdleLeaver {
                 self.idle_minutes.store(0, Ordering::SeqCst);
             }
         }
+        None
+    }
+}
+
+/// Leaves the voice channel as soon as a track ends (for one-shot join sounds).
+struct LeaveOnEnd {
+    manager: Arc<Songbird>,
+    guild_id: GuildId,
+}
+
+#[serenity::async_trait]
+impl songbird::EventHandler for LeaveOnEnd {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        let _ = self.manager.remove(self.guild_id).await;
         None
     }
 }

@@ -3,6 +3,18 @@
 Production-grade Discord bot system in Rust, built as a microservices monorepo
 with a React dashboard, PostgreSQL, Docker, and GitHub Actions CI/CD.
 
+## Project vision — build toward this (see `docs/VISION.md`)
+
+NigerianBot is the **Discord surface of a planned all-in-one self-hosted control
+platform** (bot + web UI over one Rust core + DB). North star: link a Discord
+account → provision/manage that user's access across self-hosted services
+(**Authentik** SSO/OIDC, **Seer** = Jellyseerr→Overseerr, other Docker apps) with
+roles/privileges, controlled from the dashboard. **Foundation rules when adding
+features:** keep identity/config/DB/service-integrations in shared crates (not
+bot-only); new service integrations follow the `Arr` connector pattern; RBAC via
+the JWT `role` claim; prefer designs that generalise toward the platform over
+one-off bot features. Backlog: `docs/IDEAS.md`.
+
 ## Workspace layout
 
 A single Cargo workspace (`Cargo.toml` at the root) with these member crates:

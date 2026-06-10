@@ -99,7 +99,10 @@ pub async fn dispatch_component(
     ctx: &Context,
     component: &ComponentInteraction,
 ) -> anyhow::Result<()> {
-    if component.data.custom_id.starts_with("music_") {
+    let id = &component.data.custom_id;
+    if id.starts_with("musicadd|") {
+        music::handle_add_button(ctx, component).await
+    } else if id.starts_with("music_") {
         music::handle_component(ctx, component).await
     } else {
         Ok(())

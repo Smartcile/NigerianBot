@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::anyhow;
+use serde_json::Value;
 use serenity::all::{
     ButtonStyle, ChannelId, CommandInteraction, CommandOptionType, ComponentInteraction, Context,
     CreateActionRow, CreateAutocompleteResponse, CreateButton, CreateCommand, CreateCommandOption,
@@ -41,6 +42,17 @@ pub fn definition() -> CreateCommand {
                 )
                 .required(true)
                 .set_autocomplete(true),
+            ),
+        )
+        .add_option(
+            CreateCommandOption::new(
+                CommandOptionType::SubCommand,
+                "search",
+                "Search your library and YouTube, then add with a click",
+            )
+            .add_sub_option(
+                CreateCommandOption::new(CommandOptionType::String, "query", "What to search for")
+                    .required(true),
             ),
         )
         .add_option(CreateCommandOption::new(
@@ -76,6 +88,7 @@ pub fn definition() -> CreateCommand {
 pub async fn handle(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()> {
     match super::subcommand_name(command) {
         "play" => play(ctx, command).await,
+        "search" => search(ctx, command).await,
         "pause" => pause(ctx, command).await,
         "stop" => stop(ctx, command).await,
         "queue" => queue(ctx, command).await,
@@ -395,6 +408,137 @@ async fn ack(ctx: &Context, component: &ComponentInteraction, content: &str) -> 
         .create_response(&ctx.http, CreateInteractionResponse::Message(msg))
         .await?;
     Ok(())
+}
+
+// ── search (local first, then YouTube) ───────────────────────────────────────
+
+async fn search(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()> {
+    let query = super::sub_option_str(command, "query")
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    command.defer(&ctx.http).await?;
+
+    if query.is_empty() {
+        return super::respond_edit(ctx, command, "Give me something to search for.").await;
+    }
+
+    let state = super::state(ctx).await;
+    let local = {
+        let path = state.music_path.clone();
+        let q = query.clone();
+        tokio::task::spawn_blocking(move || list_music_files(&path, &q, 5))
+            .await
+            .unwrap_or_default()
+    };
+    let youtube = youtube_search(&query, 5).await.unwrap_or_default();
+
+    if local.is_empty() && youtube.is_empty() {
+        return super::respond_edit(ctx, command, format!("🔎 No results for **{query}**.")).await;
+    }
+
+    let mut rows = Vec::new();
+    let local_buttons: Vec<CreateButton> = local
+        .iter()
+        .filter_map(|p| add_button("📁", p, p))
+        .collect();
+    if !local_buttons.is_empty() {
+        rows.push(CreateActionRow::Buttons(local_buttons));
+    }
+    let yt_buttons: Vec<CreateButton> = youtube
+        .iter()
+        .filter_map(|(title, url)| add_button("▶️", title, url))
+        .collect();
+    if !yt_buttons.is_empty() {
+        rows.push(CreateActionRow::Buttons(yt_buttons));
+    }
+
+    let content = format!(
+        "🔎 Results for **{query}** — click one to add (you need to be in a voice channel):"
+    );
+    command
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new()
+                .content(content)
+                .components(rows),
+        )
+        .await?;
+    Ok(())
+}
+
+/// Build an "add this result" button. Returns None if the source is too long to
+/// fit in a button custom id (Discord caps it at 100 chars).
+fn add_button(emoji: &str, title: &str, source: &str) -> Option<CreateButton> {
+    let custom_id = format!("musicadd|{source}");
+    if custom_id.len() > 100 {
+        return None;
+    }
+    let label: String = format!("{emoji} {title}").chars().take(80).collect();
+    Some(
+        CreateButton::new(custom_id)
+            .label(label)
+            .style(ButtonStyle::Secondary),
+    )
+}
+
+/// Search YouTube via yt-dlp; returns (title, watch-url) pairs.
+async fn youtube_search(query: &str, n: usize) -> anyhow::Result<Vec<(String, String)>> {
+    let output = tokio::process::Command::new("yt-dlp")
+        .args([
+            "--flat-playlist",
+            "--no-warnings",
+            "-J",
+            &format!("ytsearch{n}:{query}"),
+        ])
+        .output()
+        .await?;
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+    let json: Value = serde_json::from_slice(&output.stdout)?;
+    let mut out = Vec::new();
+    for e in json["entries"].as_array().cloned().unwrap_or_default() {
+        let title = e["title"].as_str().unwrap_or("Unknown").to_string();
+        if let Some(id) = e["id"].as_str() {
+            out.push((title, format!("https://www.youtube.com/watch?v={id}")));
+        }
+    }
+    Ok(out)
+}
+
+/// Handle a click on a `musicadd|<source>` button from `/music search`.
+pub async fn handle_add_button(
+    ctx: &Context,
+    component: &ComponentInteraction,
+) -> anyhow::Result<()> {
+    let source = component
+        .data
+        .custom_id
+        .strip_prefix("musicadd|")
+        .unwrap_or("")
+        .to_string();
+    if source.is_empty() {
+        return ack(ctx, component, "Nothing to add.").await;
+    }
+    let Some(guild_id) = component.guild_id else {
+        return ack(ctx, component, "Use this in a server.").await;
+    };
+    let Some(channel) = user_voice_channel(ctx, guild_id, component.user.id) else {
+        return ack(ctx, component, "Join a voice channel first.").await;
+    };
+
+    let msg = match play_in_channel(ctx, guild_id, channel, &source).await {
+        Ok((title, was_empty, _)) => {
+            if was_empty {
+                format!("🎵 Now playing: **{title}**")
+            } else {
+                format!("➕ Added: **{title}**")
+            }
+        }
+        Err(e) => format!("⚠️ {e}"),
+    };
+    ack(ctx, component, &msg).await
 }
 
 // ── autocomplete (song list) ─────────────────────────────────────────────────

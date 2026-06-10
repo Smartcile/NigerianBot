@@ -55,6 +55,9 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
       # Folder (inside the container) where local music files live.
       MUSIC_MOUNT_PATH: /music
+      # Comma-separated Discord user ids always treated as Admin (the server owner
+      # is always admin too). Used by /admin and role-based access.
+      ADMIN_DISCORD_IDS: ${ADMIN_DISCORD_IDS:-}
       # Sonarr (TV) and Radarr (movies) — set URL + API key to enable /sonarr and
       # /radarr. URL must be reachable from this container (e.g. http://host-ip:8989).
       SONARR_URL: ${SONARR_URL:-}

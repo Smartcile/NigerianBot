@@ -22,6 +22,9 @@ pub struct BotConfig {
     /// Radarr (movies) base URL + API key, when configured.
     pub radarr_url: Option<String>,
     pub radarr_api_key: Option<String>,
+    /// Discord user ids that are always treated as Admin (bootstrap), from
+    /// `ADMIN_DISCORD_IDS` (comma-separated).
+    pub admin_ids: Vec<u64>,
 }
 
 impl BotConfig {
@@ -51,6 +54,13 @@ impl BotConfig {
             sonarr_api_key: common::config::optional("SONARR_API_KEY"),
             radarr_url: common::config::optional("RADARR_URL"),
             radarr_api_key: common::config::optional("RADARR_API_KEY"),
+            admin_ids: common::config::optional("ADMIN_DISCORD_IDS")
+                .map(|s| {
+                    s.split(',')
+                        .filter_map(|p| p.trim().parse::<u64>().ok())
+                        .collect()
+                })
+                .unwrap_or_default(),
         })
     }
 }

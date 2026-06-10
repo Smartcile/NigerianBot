@@ -9,6 +9,7 @@ mod audit;
 mod commands;
 mod config;
 mod handlers;
+mod identity;
 mod scheduler;
 mod services;
 mod state;
@@ -181,7 +182,8 @@ async fn main() -> anyhow::Result<()> {
     }
     let pool = state::VoicePool { bots: pool_bots };
     let pool_size = pool.len();
-    let bot_state = state::BotState::new(db, http, music_path, pool, sonarr, radarr);
+    let admin_ids = config.admin_ids.clone();
+    let bot_state = state::BotState::new(db, http, music_path, pool, sonarr, radarr, admin_ids);
     let scheduler_state = bot_state.clone();
 
     // GUILD_VOICE_STATES feeds the cache so we can find a user's voice channel.

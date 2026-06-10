@@ -148,7 +148,17 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   (registered AFTER `/health` + `/api/*` so those win). No separate container —
   still one API image, BYO-proxy. `DASHBOARD_DIR` overrides the static path
   (default `/app/static`). The old inline-HTML handler/include_str! is removed.
-- Phases remaining: Docker hardening, CI/CD polish, docs (all optional/minor).
+- **`/music search` (DONE):** local-first (`list_music_files`) then YouTube
+  (`yt-dlp ytsearch5 -J`) with click-to-add buttons (custom_id `musicadd|<source>`,
+  routed in `dispatch_component` before `music_*`; `play_in_channel` on click).
+- **RBAC + identity (DONE, foundation):** `users` table (migration 0005, keyed on
+  Discord id, `role` admin|user|viewer). `bot/src/identity.rs`: `touch` (upsert on
+  every command via dispatch), `role_of` (guild owner + `ADMIN_DISCORD_IDS` =
+  Admin bootstrap, else DB role, default User), `set_role`. `/admin whoami|role|
+  list` (role/list admin-gated). This is the base for the platform vision
+  (`docs/VISION.md`): extend with account linking + service provisioning; gate
+  commands via `Role::rank`. `ADMIN_DISCORD_IDS` env (comma-separated).
+- Phases remaining: Docker hardening, CI/CD polish (all optional/minor).
 
 ## Deploy / CI cheatsheet
 

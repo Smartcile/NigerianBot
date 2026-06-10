@@ -4,6 +4,7 @@
 //!   * `definition()` — the [`CreateCommand`] registered with Discord
 //!   * `handle()`     — the async handler invoked when the command is used
 
+pub mod admin;
 pub mod autoplay;
 pub mod bot;
 pub mod joinsound;
@@ -19,7 +20,7 @@ use std::time::Duration;
 use serenity::all::{
     ChannelId, CommandDataOptionValue, CommandInteraction, ComponentInteraction, Context,
     CreateCommand, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
-    EditInteractionResponse,
+    EditInteractionResponse, UserId,
 };
 use tracing::{error, warn};
 
@@ -37,6 +38,7 @@ pub fn all_definitions() -> Vec<CreateCommand> {
         autoplay::definition(),
         joinsound::definition(),
         schedule::definition(),
+        admin::definition(),
     ]
 }
 
@@ -44,12 +46,13 @@ pub fn all_definitions() -> Vec<CreateCommand> {
 /// user an ephemeral error (best effort) so they aren't left with a silent
 /// "interaction failed".
 pub async fn dispatch(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()> {
-    // Best-effort audit logging — never let a DB hiccup block the command.
+    // Best-effort audit logging + identity directory — never block the command.
     let bot_state = state(ctx).await;
     if let Some(pool) = &bot_state.db {
         if let Err(e) = crate::audit::record(pool, command).await {
             warn!(?e, "failed to write audit log entry");
         }
+        crate::identity::touch(pool, command.user.id, &command.user.name).await;
     }
 
     let result = route(ctx, command).await;
@@ -77,6 +80,7 @@ async fn route(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()
         "autoplay" => autoplay::handle(ctx, command).await,
         "joinsound" => joinsound::handle(ctx, command).await,
         "schedule" => schedule::handle(ctx, command).await,
+        "admin" => admin::handle(ctx, command).await,
         other => respond_ephemeral(ctx, command, format!("Unknown command: `{other}`")).await,
     }
 }
@@ -215,6 +219,17 @@ pub fn sub_option_channel(command: &CommandInteraction, name: &str) -> Option<Ch
         .find(|o| o.name == name)
         .and_then(|o| match &o.value {
             CommandDataOptionValue::Channel(id) => Some(*id),
+            _ => None,
+        })
+}
+
+/// Read a user option from the invoked subcommand.
+pub fn sub_option_user(command: &CommandInteraction, name: &str) -> Option<UserId> {
+    subcommand_options(command)
+        .iter()
+        .find(|o| o.name == name)
+        .and_then(|o| match &o.value {
+            CommandDataOptionValue::User(id) => Some(*id),
             _ => None,
         })
 }

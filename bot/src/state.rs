@@ -103,6 +103,8 @@ pub struct BotState {
     pub sonarr: Option<Arr>,
     /// Radarr (movies) client, when configured.
     pub radarr: Option<Arr>,
+    /// Discord ids always treated as Admin (bootstrap).
+    pub admin_ids: Vec<u64>,
 }
 
 impl BotState {
@@ -114,6 +116,7 @@ impl BotState {
         pool: VoicePool,
         sonarr: Option<Arr>,
         radarr: Option<Arr>,
+        admin_ids: Vec<u64>,
     ) -> Arc<Self> {
         Arc::new(Self {
             started_at: Instant::now(),
@@ -123,6 +126,7 @@ impl BotState {
             pool,
             sonarr,
             radarr,
+            admin_ids,
         })
     }
 }

@@ -1,11 +1,13 @@
 # 🎵 NigerianBot
 
 A **production-grade Discord bot system written in Rust** — a microservices
-monorepo with a full-featured music engine, PostgreSQL persistence, a JWT-secured
-REST API, and a push-to-deploy CI/CD pipeline. Built to run 24/7 in Docker.
+monorepo with a full-featured music engine, Sonarr/Radarr media requests, a
+React dashboard, PostgreSQL persistence, a JWT-secured REST API, and a
+push-to-deploy CI/CD pipeline. Built to run 24/7 in Docker.
 
 ![Build](https://github.com/Smartcile/NigerianBot/actions/workflows/build.yml/badge.svg)
 ![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)
 ![Postgres](https://img.shields.io/badge/PostgreSQL-16-blue?logo=postgresql)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -14,61 +16,57 @@ REST API, and a push-to-deploy CI/CD pipeline. Built to run 24/7 in Docker.
 
 ## ✨ Highlights
 
-A serious music bot, plus the infrastructure to run it like a real service:
-
-- 🎧 **Full music engine** — play from a mounted music library *or* YouTube/URLs,
-  with a live queue, volume control, and **interactive Pause / Skip / Stop
-  buttons** right on the now-playing message.
-- 🔎 **Smart autocomplete** — start typing `/music play` and your local library
-  is searched live, subfolders and all.
-- 🔐 **Discord DAVE / E2EE voice** — speaks Discord's new end-to-end-encrypted
-  voice protocol (mandatory since March 2026), so voice actually connects in 2026.
+- 🎧 **Full music engine** — play from a mounted library *or* YouTube/URLs, with a
+  live queue, volume, and **Pause / Skip / Stop buttons** on the now-playing
+  message.
+- 🔎 **Smart autocomplete** — start typing `/music play` and your local library is
+  searched live, subfolders and all.
+- 🔐 **Discord DAVE / E2EE voice** — speaks Discord's end-to-end-encrypted voice
+  protocol (mandatory since March 2026), so voice actually connects.
 - 🤖 **Multi-bot voice pool** — run several bot identities from one process so
-  **multiple channels can play audio simultaneously** (Discord only allows one
-  voice channel per bot — so NigerianBot runs a pool).
-- 🎯 **`/autoplay`** — when someone joins a chosen voice channel, the bot hops in
-  and plays a track (and stays).
-- 🔔 **`/joinsound`** — entrance sounds: join → play a clip → leave.
-- ⏳ **Idle auto-leave** — frees a bot after 3 minutes of silence.
+  **multiple channels play audio at once** (Discord allows one voice channel per
+  bot, so NigerianBot runs a self-healing pool).
+- 🎯 **`/autoplay`** & 🔔 **`/joinsound`** — auto-play when someone joins a channel
+  (stay), or one-shot entrance sounds (join → play → leave). ⏳ Idle auto-leave.
+- 🎬 **Media requests** — `/sonarr` (TV) & `/radarr` (movies): status, queue,
+  upcoming, search, and **one-command requests** that add to your library and
+  start downloading.
+- 🗓️ **Scheduler** — `/schedule` reminders, recurring announcements, and
+  Sonarr/Radarr download digests; auto-prunes old logs.
+- 📊 **React dashboard** — log in with your API key for live stats, top commands,
+  and recent activity (served by the API — bring your own HTTPS).
 - 🗄️ **Persistence & audit** — every command is logged to PostgreSQL; settings,
-  queues, and triggers survive restarts.
+  queues, triggers, and schedules survive restarts.
 - 🚀 **Push-to-deploy** — `git push` → GitHub Actions builds images → your server
-  pulls them. Builds are cached down to **~90 seconds** with `cargo-chef`.
+  pulls them. Code-only builds are cached down to **~90 seconds** with `cargo-chef`.
 
 ---
 
 ## 🏗️ Architecture
 
-A Cargo workspace of independent services that share a `common` library and one
-database:
+A Cargo workspace of services that share a `common` library and one database:
 
 ```
-                         ┌──────────────────────────┐
-        Discord  ◀──────▶│   bot  (serenity +       │
-        (gateway,        │        songbird voice)   │
-         voice, DAVE)    │   + voice-bot pool       │
-                         └────────────┬─────────────┘
-                                      │
-   Dashboard / API  ◀───┐            │
-   clients              ▼            ▼
-                ┌───────────────┐  ┌──────────────────────┐
-                │  api          │  │  PostgreSQL 16        │
-                │  (actix-web,  │◀▶│  logs · settings ·    │
-                │   JWT auth)   │  │  queue · audit ·      │
-                └───────────────┘  │  triggers             │
-                ┌───────────────┐  └──────────────────────┘
-                │  scheduler /  │            ▲
-                │  worker       │────────────┘
-                └───────────────┘
+                         ┌──────────────────────────────┐
+        Discord  ◀──────▶│  bot  (serenity + songbird)  │
+        (gateway,        │  · voice-bot pool            │
+         voice, DAVE)    │  · background scheduler      │◀──▶ Sonarr / Radarr
+                         └───────────────┬──────────────┘
+                                         │
+   Browser ──▶ React dashboard ──▶ ┌─────┴────────┐   ┌────────────────────┐
+                                   │  api          │   │  PostgreSQL 16     │
+                                   │  (actix-web,  │◀─▶│  audit · settings  │
+                                   │   JWT, serves │   │  queue · triggers  │
+                                   │   the SPA)    │   │  schedules         │
+                                   └───────────────┘   └────────────────────┘
 ```
 
-| Service       | Stack            | Role                                            |
-|---------------|------------------|-------------------------------------------------|
-| **bot**       | serenity, songbird | Discord bot — slash commands, events, voice    |
-| **api**       | actix-web        | REST API (JWT auth) for the dashboard/control   |
-| **scheduler** | tokio-cron       | Scheduled workflows *(scaffolded)*              |
-| **worker**    | tokio            | Async task processing *(scaffolded)*            |
-| **common**    | (library)        | Shared config, telemetry, DB pool               |
+| Service       | Stack                | Role                                          |
+|---------------|----------------------|-----------------------------------------------|
+| **bot**       | serenity, songbird   | Discord bot, voice, media, in-process scheduler |
+| **api**       | actix-web + React    | REST API (JWT) + serves the dashboard SPA     |
+| **common**    | (library)            | Shared config, telemetry, DB pool             |
+| scheduler / worker | tokio           | Workspace scaffolding (scheduling runs in the bot) |
 
 ---
 
@@ -76,23 +74,24 @@ database:
 
 | Command | What it does |
 |---------|--------------|
-| `/music play <song\|url>` | Play from your library (autocompletes) or a URL — with control buttons |
+| `/music play <song\|url>` | Play from your library (autocompletes) or a URL — with buttons |
 | `/music pause · stop · queue · volume` | Playback controls |
-| `/autoplay set·clear·list` | Auto-play a track when someone joins a chosen voice channel (stays) |
-| `/joinsound set·clear·list` | Play an entrance sound when someone joins, then leave |
-| `/server info` | Live server stats (members, roles, channels, owner…) |
-| `/bot status` | Bot health: uptime, version, DB status, voice-bot count, commands logged |
-| `/ping` | Health check |
-| `/sonar` · `/radar` | Code-quality & monitoring integrations *(coming soon)* |
+| `/autoplay set·clear·list` | Auto-play when someone joins a channel (stays) |
+| `/joinsound set·clear·list` | Entrance sound when someone joins, then leave |
+| `/sonarr status·queue·upcoming·search·add` | Sonarr (TV): browse & request shows |
+| `/radarr status·queue·upcoming·search·add` | Radarr (movies): browse & request films |
+| `/schedule reminder·recurring·digest·list·delete` | Schedule messages & media digests |
+| `/server info` · `/bot status` · `/ping` | Server stats · bot health · health check |
 
 ---
 
 ## 🧰 Tech stack
 
-**Language:** Rust (2021) · **Bot:** [serenity](https://github.com/serenity-rs/serenity) +
-[songbird](https://github.com/serenity-rs/songbird) · **API:** [actix-web](https://actix.rs/) ·
-**DB:** PostgreSQL + [sqlx](https://github.com/launchbadge/sqlx) · **Audio:** ffmpeg + yt-dlp ·
-**Auth:** JWT · **CI/CD:** GitHub Actions → GHCR · **Deploy:** Docker Compose / Portainer.
+**Rust (2021)** · Bot: [serenity](https://github.com/serenity-rs/serenity) +
+[songbird](https://github.com/serenity-rs/songbird) · API: [actix-web](https://actix.rs/) ·
+Dashboard: **React + Vite** · DB: PostgreSQL + [sqlx](https://github.com/launchbadge/sqlx) ·
+Audio: ffmpeg + yt-dlp · Auth: JWT · CI/CD: GitHub Actions → GHCR · Deploy: Docker
+Compose / Portainer.
 
 ---
 
@@ -100,52 +99,50 @@ database:
 
 1. Push to `main`.
 2. **GitHub Actions** builds the `bot` and `api` images (cargo-chef + registry
-   cache keep it fast) and pushes them to the **GitHub Container Registry**.
-3. The server (running **Portainer**) pulls the prebuilt images — no compiling on
-   the host.
+   cache keep it fast; the API image also builds the React dashboard) and pushes
+   them to the **GitHub Container Registry**.
+3. The server (e.g. **Portainer**) pulls the prebuilt images — no compiling on the
+   host. The dashboard is at `http://<server>:8000/`.
 
-The whole stack — bot, API, and PostgreSQL — is defined in
-[`docker-compose.yml`](docker-compose.yml). Secrets (Discord token, DB password,
-API keys) are injected as environment variables and never committed.
-
-The app serves **plain HTTP** and expects you to bring your own reverse proxy /
-TLS (Nginx Proxy Manager, Caddy, Traefik, Cloudflare Tunnel…) — see
-**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. The Discord bot itself is
-outbound-only and needs no inbound ports at all.
+The whole stack is defined in [`docker-compose.yml`](docker-compose.yml). Secrets
+are injected as environment variables and never committed. The app serves **plain
+HTTP** — bring your own reverse proxy / TLS (see
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**). The Discord bot is outbound-only and
+needs no inbound ports.
 
 ```bash
 # Local development
 cp .env.example .env        # fill in DISCORD_TOKEN, etc.
-cargo run -p bot            # or -p api / -p scheduler / -p worker
+cargo run -p bot            # or -p api
 ```
 
 ---
 
-## 🗺️ Roadmap
+## 🗺️ Status
 
-| Phase | Scope | Status |
-|------:|-------|:------:|
-| 1 | Workspace + bot skeleton | ✅ |
-| 2 | Slash-command framework, embeds | ✅ |
-| 3 | PostgreSQL schema + auto-migrations + audit log | ✅ |
-| 4 | REST API with JWT auth | ✅ |
-| 6 | Music engine (DAVE, queue, buttons, autoplay, joinsound, multi-bot pool) | ✅ |
-| — | CI/CD with cargo-chef caching | ✅ |
-| 5 | Sonar + Radar integrations | ⬜ |
-| 7 | React dashboard | ⬜ |
-| 8 | Scheduler & worker logic | ⬜ |
-| 9 | Nginx reverse proxy + HTTPS | ⬜ |
+| Area | Status |
+|------|:------:|
+| Workspace, slash-command framework, embeds | ✅ |
+| PostgreSQL schema, auto-migrations, audit log | ✅ |
+| REST API with JWT auth | ✅ |
+| Music engine (DAVE, queue, buttons, autoplay, joinsound, voice pool) | ✅ |
+| Sonarr + Radarr integrations (incl. requests) | ✅ |
+| React dashboard | ✅ |
+| Scheduler (reminders, recurring, media digests, housekeeping) | ✅ |
+| CI/CD with cargo-chef caching | ✅ |
+| HTTPS | bring your own reverse proxy ([docs](docs/DEPLOYMENT.md)) |
 
 ---
 
-## 🔒 A few engineering notes
+## 🔒 Engineering notes
 
 - **Zero unsafe**, type-safe end to end. Errors carry context via `anyhow`.
-- **One shared schema**, migrations embedded into the binaries and applied on
-  startup behind an advisory lock (safe for concurrent services).
-- **Resilient startup** — services retry the database while it warms up.
-- **Local files decoded via ffmpeg → raw PCM**, so any format/codec and messy
+- Migrations embedded into the binaries and applied on startup behind an advisory
+  lock (safe for concurrent services); services retry the DB while it warms up.
+- Local files are decoded via **ffmpeg → raw PCM**, so any format/codec and messy
   metadata tags "just work" without crashing the decoder.
+- The voice pool is **self-healing**: a bot that fails to join is freed instead of
+  getting stuck, and requests try every free bot.
 
 ---
 

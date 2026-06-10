@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1
+#
+# Voice-cloning TTS service (XTTS-v2). Built ON THE GPU HOST, not in CI — the
+# CUDA + PyTorch base is multi-GB. Lives at the repo root (Portainer-friendly).
+#
+# Requires the NVIDIA Container Toolkit on the host. The XTTS model (~2 GB) is
+# downloaded on first run into the tts_models volume.
+
+FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
+
+# ffmpeg/libsndfile for audio I/O.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY tts/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+COPY tts/app.py ./
+
+ENV COQUI_TOS_AGREED=1 VOICES_DIR=/voices
+EXPOSE 8001
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]

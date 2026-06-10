@@ -1,0 +1,4 @@
+# torch/torchaudio come from the CUDA base image (pytorch/pytorch).
+coqui-tts
+fastapi
+uvicorn[standard]

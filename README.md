@@ -108,6 +108,11 @@ The whole stack — bot, API, and PostgreSQL — is defined in
 [`docker-compose.yml`](docker-compose.yml). Secrets (Discord token, DB password,
 API keys) are injected as environment variables and never committed.
 
+The app serves **plain HTTP** and expects you to bring your own reverse proxy /
+TLS (Nginx Proxy Manager, Caddy, Traefik, Cloudflare Tunnel…) — see
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. The Discord bot itself is
+outbound-only and needs no inbound ports at all.
+
 ```bash
 # Local development
 cp .env.example .env        # fill in DISCORD_TOKEN, etc.

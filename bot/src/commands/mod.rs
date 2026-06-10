@@ -9,6 +9,7 @@ pub mod bot;
 pub mod joinsound;
 pub mod music;
 pub mod radarr;
+pub mod schedule;
 pub mod server;
 pub mod sonarr;
 
@@ -35,6 +36,7 @@ pub fn all_definitions() -> Vec<CreateCommand> {
         bot::definition(),
         autoplay::definition(),
         joinsound::definition(),
+        schedule::definition(),
     ]
 }
 
@@ -74,6 +76,7 @@ async fn route(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()
         "bot" => bot::handle(ctx, command).await,
         "autoplay" => autoplay::handle(ctx, command).await,
         "joinsound" => joinsound::handle(ctx, command).await,
+        "schedule" => schedule::handle(ctx, command).await,
         other => respond_ephemeral(ctx, command, format!("Unknown command: `{other}`")).await,
     }
 }

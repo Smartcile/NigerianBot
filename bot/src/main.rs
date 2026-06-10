@@ -9,6 +9,7 @@ mod audit;
 mod commands;
 mod config;
 mod handlers;
+mod scheduler;
 mod services;
 mod state;
 
@@ -181,6 +182,7 @@ async fn main() -> anyhow::Result<()> {
     let pool = state::VoicePool { bots: pool_bots };
     let pool_size = pool.len();
     let bot_state = state::BotState::new(db, http, music_path, pool, sonarr, radarr);
+    let scheduler_state = bot_state.clone();
 
     // GUILD_VOICE_STATES feeds the cache so we can find a user's voice channel.
     let primary_intents = GatewayIntents::GUILDS
@@ -211,6 +213,9 @@ async fn main() -> anyhow::Result<()> {
         .register_songbird_with(primary_songbird)
         .await
         .context("failed to build Discord client")?;
+
+    // Background scheduler (recurring messages, reminders, media digests, pruning).
+    scheduler::spawn(client.http.clone(), scheduler_state);
 
     info!(voice_bots = pool_size, "starting NigerianBot…");
     client.start().await.context("Discord client error")?;

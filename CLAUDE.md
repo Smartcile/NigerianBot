@@ -120,7 +120,17 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   (total, last_24h, top commands from `audit_log`). NOTE: `.dockerignore` must NOT
   exclude `dashboard/` (only its build artifacts) or `include_str!` fails in CI.
   Deploy = just redeploy the api image; reachable at `http://server:API_PORT/`.
-- Phases 8–11: scheduler/worker logic, Docker hardening, CI/CD polish, docs.
+- **Phase 8 — DONE (scheduling folded into the bot):** rather than separate
+  scheduler/worker containers (which would duplicate the Discord token, DB, and
+  arr config), the scheduling runs as a background tokio task in the bot
+  (`bot/src/scheduler.rs`): every 60s it fires due `schedules` rows and prunes
+  audit/log rows >30 days. `/schedule reminder|recurring|digest|list|delete`
+  creates them (`schedules` table, migration 0004). Kinds: `message`,
+  `digest_sonarr`, `digest_radarr`. The worker posts via `client.http` (REST).
+  The `scheduler`/`worker` crates remain as workspace scaffolding. Reverse-proxy
+  guidance lives in `docs/DEPLOYMENT.md` (BYO proxy — none bundled, by design).
+- Phases remaining: React dashboard (upgrade the lightweight one), Docker
+  hardening, CI/CD polish, docs.
 
 ## Deploy / CI cheatsheet
 

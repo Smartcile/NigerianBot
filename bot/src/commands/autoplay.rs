@@ -221,14 +221,14 @@ pub async fn maybe_autoplay(ctx: &Context, guild_id: GuildId, channel_id: Channe
     // If a bot is already in this channel, don't add another.
     if state
         .pool
-        .bot_in_channel(guild_id, channel_id)
+        .find_in_channel(guild_id, channel_id)
         .await
         .is_some()
     {
         return;
     }
 
-    if let Err(e) = super::music::play_on_free_bot(ctx, guild_id, channel_id, &source).await {
+    if let Err(e) = super::music::play_in_channel(ctx, guild_id, channel_id, &source).await {
         warn!(error = %e, "autoplay failed to start");
     }
 }

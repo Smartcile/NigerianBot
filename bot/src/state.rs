@@ -30,40 +30,56 @@ impl VoicePool {
         self.bots.len()
     }
 
-    /// The first bot with no active voice call in this guild, with its index.
-    pub fn pick_free(&self, guild_id: GuildId) -> Option<(usize, Arc<Songbird>)> {
-        self.bots
-            .iter()
-            .enumerate()
-            .find(|(_, b)| b.songbird.get(guild_id).is_none())
-            .map(|(i, b)| (i, b.songbird.clone()))
-    }
-
     /// The pool bot at `index`.
     pub fn get(&self, index: usize) -> Option<Arc<Songbird>> {
         self.bots.get(index).map(|b| b.songbird.clone())
     }
 
-    /// Any pool bot with an active call in this guild (first one found).
-    pub fn any_active(&self, guild_id: GuildId) -> Option<Arc<Songbird>> {
-        self.bots
-            .iter()
-            .find(|b| b.songbird.get(guild_id).is_some())
-            .map(|b| b.songbird.clone())
+    /// The voice channel a bot is actually connected to in this guild, if any.
+    /// A leftover call with no live connection reads as `None` (i.e. free), so a
+    /// failed join can't permanently mark a bot as busy.
+    async fn connected_channel(songbird: &Songbird, guild_id: GuildId) -> Option<u64> {
+        let call = songbird.get(guild_id)?;
+        let channel = call.lock().await.current_channel();
+        channel.map(|c| c.0.get())
     }
 
-    /// The pool bot whose active call is in `channel_id`, if any.
-    pub async fn bot_in_channel(
+    /// All bots not currently in a voice channel in this guild, with their index.
+    pub async fn free_bots(&self, guild_id: GuildId) -> Vec<(usize, Arc<Songbird>)> {
+        let mut free = Vec::new();
+        for (i, b) in self.bots.iter().enumerate() {
+            if Self::connected_channel(&b.songbird, guild_id)
+                .await
+                .is_none()
+            {
+                free.push((i, b.songbird.clone()));
+            }
+        }
+        free
+    }
+
+    /// The bot (and its index) currently connected to `channel_id`, if any.
+    pub async fn find_in_channel(
         &self,
         guild_id: GuildId,
         channel_id: ChannelId,
-    ) -> Option<Arc<Songbird>> {
+    ) -> Option<(usize, Arc<Songbird>)> {
+        for (i, b) in self.bots.iter().enumerate() {
+            if Self::connected_channel(&b.songbird, guild_id).await == Some(channel_id.get()) {
+                return Some((i, b.songbird.clone()));
+            }
+        }
+        None
+    }
+
+    /// Any bot actively connected somewhere in this guild (first found).
+    pub async fn any_active(&self, guild_id: GuildId) -> Option<Arc<Songbird>> {
         for b in &self.bots {
-            if let Some(call_lock) = b.songbird.get(guild_id) {
-                let current = call_lock.lock().await.current_channel();
-                if current.map(|c| c.0.get()) == Some(channel_id.get()) {
-                    return Some(b.songbird.clone());
-                }
+            if Self::connected_channel(&b.songbird, guild_id)
+                .await
+                .is_some()
+            {
+                return Some(b.songbird.clone());
             }
         }
         None

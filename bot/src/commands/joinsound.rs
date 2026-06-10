@@ -221,7 +221,7 @@ pub async fn maybe_play_joinsound(ctx: &Context, guild_id: GuildId, channel_id: 
     // If a bot is already in this channel, don't add another.
     if state
         .pool
-        .bot_in_channel(guild_id, channel_id)
+        .find_in_channel(guild_id, channel_id)
         .await
         .is_some()
     {

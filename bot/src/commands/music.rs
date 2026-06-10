@@ -130,60 +130,88 @@ async fn resolve_and_play(
         .ok_or_else(|| anyhow!("Use this in a server."))?;
     let channel_id = user_voice_channel(ctx, guild_id, command.user.id)
         .ok_or_else(|| anyhow!("Join a voice channel first."))?;
-    play_on_free_bot(ctx, guild_id, channel_id, arg).await
+    play_in_channel(ctx, guild_id, channel_id, arg).await
 }
 
-/// Pick a free pool bot, join `channel_id`, and enqueue `arg`. Returns the
-/// title, whether it started playing immediately, and the bot's pool index.
-pub async fn play_on_free_bot(
+/// Play `arg` in `channel_id`. If a pool bot is already in that channel, queue on
+/// it; otherwise grab a free bot and join (trying each until one connects).
+/// Returns the title, whether it started playing immediately, and the bot index.
+/// Used by `/music play` and `/autoplay`.
+pub async fn play_in_channel(
     ctx: &Context,
     guild_id: GuildId,
     channel_id: ChannelId,
     arg: &str,
 ) -> anyhow::Result<(String, bool, usize)> {
     let state = super::state(ctx).await;
-    let (index, songbird) = state
-        .pool
-        .pick_free(guild_id)
-        .ok_or_else(|| anyhow!("All voice bots are busy right now."))?;
-    let (title, was_empty) = enqueue(&state, &songbird, guild_id, channel_id, arg).await?;
-    Ok((title, was_empty, index))
-}
+    let (input, title) = build_source(&state, arg).await?;
 
-async fn enqueue(
-    state: &BotState,
-    songbird: &Arc<Songbird>,
-    guild_id: GuildId,
-    channel_id: ChannelId,
-    arg: &str,
-) -> anyhow::Result<(String, bool)> {
-    let newly_connected = songbird.get(guild_id).is_none();
+    // A bot is already in this channel — queue on it (one bot per channel).
+    if let Some((index, songbird)) = state.pool.find_in_channel(guild_id, channel_id).await {
+        let call_lock = songbird
+            .get(guild_id)
+            .ok_or_else(|| anyhow!("the player just left"))?;
+        let was_empty = {
+            let mut call = call_lock.lock().await;
+            let was_empty = call.queue().is_empty();
+            call.enqueue_input(input).await;
+            was_empty
+        };
+        persist_queue(&state, guild_id, &title, arg).await;
+        return Ok((title, was_empty, index));
+    }
+
+    // Otherwise grab a free bot and join.
+    let (index, songbird) = join_free_bot(&state, guild_id, channel_id).await?;
     let call_lock = songbird
-        .join(guild_id, channel_id)
-        .await
-        .map_err(|e| anyhow!("couldn't join the voice channel: {e}"))?;
-
-    let (input, title) = build_source(state, arg).await?;
-
-    let was_empty = {
-        let call = call_lock.lock().await;
-        call.queue().is_empty()
-    };
+        .get(guild_id)
+        .ok_or_else(|| anyhow!("the player just left"))?;
     {
         let mut call = call_lock.lock().await;
         call.enqueue_input(input).await;
-        if newly_connected {
-            call.add_global_event(
-                Event::Periodic(Duration::from_secs(60), None),
-                IdleLeaver {
-                    manager: songbird.clone(),
-                    guild_id,
-                    idle_minutes: Arc::new(AtomicU32::new(0)),
-                },
-            );
+        call.add_global_event(
+            Event::Periodic(Duration::from_secs(60), None),
+            IdleLeaver {
+                manager: songbird.clone(),
+                guild_id,
+                idle_minutes: Arc::new(AtomicU32::new(0)),
+            },
+        );
+    }
+    persist_queue(&state, guild_id, &title, arg).await;
+    Ok((title, true, index))
+}
+
+/// Try each free pool bot in turn, cleaning up any that fail to join so a failed
+/// attempt can't leave a bot permanently "busy". Returns the bot that joined.
+async fn join_free_bot(
+    state: &BotState,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+) -> anyhow::Result<(usize, Arc<Songbird>)> {
+    let free = state.pool.free_bots(guild_id).await;
+    if free.is_empty() {
+        return Err(anyhow!("All voice bots are busy right now."));
+    }
+    let mut last_err: Option<String> = None;
+    for (index, songbird) in free {
+        match songbird.join(guild_id, channel_id).await {
+            Ok(_) => return Ok((index, songbird)),
+            Err(e) => {
+                // Clear the dead call so this bot is free again next time.
+                let _ = songbird.remove(guild_id).await;
+                warn!(bot = index, error = %e, "voice-pool bot failed to join; trying next");
+                last_err = Some(e.to_string());
+            }
         }
     }
+    Err(anyhow!(
+        "couldn't join the voice channel ({})",
+        last_err.unwrap_or_else(|| "no bot could connect".to_string())
+    ))
+}
 
+async fn persist_queue(state: &BotState, guild_id: GuildId, title: &str, source: &str) {
     if let Some(pool) = &state.db {
         let _ = sqlx::query(
             "INSERT INTO music_queue (guild_id, position, title, source, requested_by) \
@@ -191,14 +219,12 @@ async fn enqueue(
         )
         .bind(guild_id.get() as i64)
         .bind(0_i32)
-        .bind(&title)
-        .bind(arg)
+        .bind(title)
+        .bind(source)
         .bind(Option::<i64>::None)
         .execute(pool)
         .await;
     }
-
-    Ok((title, was_empty))
 }
 
 /// Pick a free pool bot, join, play `source` once, and leave when it ends.
@@ -211,14 +237,10 @@ pub async fn play_once_on_free_bot(
     let state = super::state(ctx).await;
     let (input, _title) = build_source(&state, source).await?;
 
-    let (_index, songbird) = state
-        .pool
-        .pick_free(guild_id)
-        .ok_or_else(|| anyhow!("All voice bots are busy right now."))?;
+    let (_index, songbird) = join_free_bot(&state, guild_id, channel_id).await?;
     let call_lock = songbird
-        .join(guild_id, channel_id)
-        .await
-        .map_err(|e| anyhow!("couldn't join the voice channel: {e}"))?;
+        .get(guild_id)
+        .ok_or_else(|| anyhow!("the player just left"))?;
 
     let handle = {
         let mut call = call_lock.lock().await;
@@ -457,11 +479,11 @@ async fn control_target(ctx: &Context, command: &CommandInteraction) -> Option<A
     let guild_id = command.guild_id?;
     let state = super::state(ctx).await;
     if let Some(channel) = user_voice_channel(ctx, guild_id, command.user.id) {
-        if let Some(sb) = state.pool.bot_in_channel(guild_id, channel).await {
+        if let Some((_, sb)) = state.pool.find_in_channel(guild_id, channel).await {
             return Some(sb);
         }
     }
-    state.pool.any_active(guild_id)
+    state.pool.any_active(guild_id).await
 }
 
 async fn pause(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()> {

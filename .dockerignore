@@ -6,5 +6,9 @@ target/
 .env
 .env.*
 !.env.example
-dashboard/
+# Exclude dashboard build artifacts, but keep the source (the API embeds
+# dashboard/index.html at build time via include_str!).
+dashboard/node_modules/
+dashboard/build/
+dashboard/dist/
 *.log

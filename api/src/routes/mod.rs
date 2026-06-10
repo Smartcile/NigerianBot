@@ -6,12 +6,15 @@ use actix_web::web;
 use crate::handlers;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.route("/health", web::get().to(handlers::health))
+    cfg.route("/", web::get().to(handlers::dashboard))
+        .route("/health", web::get().to(handlers::health))
         .service(
             web::scope("/api")
                 // --- Authentication ---
                 .route("/auth/login", web::post().to(handlers::login))
                 .route("/auth/refresh", web::post().to(handlers::refresh))
+                // --- Dashboard ---
+                .route("/stats", web::get().to(handlers::stats))
                 // --- Bot control ---
                 .route("/bot/status", web::get().to(handlers::bot_status))
                 .route("/bot/logs", web::get().to(handlers::bot_logs))

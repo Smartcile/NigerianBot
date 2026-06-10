@@ -10,6 +10,13 @@ use crate::state::AppState;
 
 // ── Public ─────────────────────────────────────────────────────────────────
 
+/// The dashboard single-page app (login + live stats), embedded at build time.
+pub async fn dashboard() -> impl Responder {
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(include_str!("../../../dashboard/index.html"))
+}
+
 /// Liveness/health probe used by Docker and the deploy pipeline.
 pub async fn health() -> impl Responder {
     HttpResponse::Ok().json(json!({
@@ -144,6 +151,35 @@ pub async fn bot_logs(
             HttpResponse::InternalServerError().json(json!({ "error": "db_error" }))
         }
     }
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct CommandCount {
+    pub command: String,
+    pub count: i64,
+}
+
+/// `GET /api/stats` — aggregate command stats for the dashboard.
+pub async fn stats(state: web::Data<AppState>, _user: AuthUser) -> impl Responder {
+    let total: i64 = sqlx::query_scalar("SELECT count(*) FROM audit_log")
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0);
+    let last_24h: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_log WHERE created_at > now() - interval '24 hours'",
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+    let top: Vec<CommandCount> = sqlx::query_as(
+        "SELECT command, count(*)::bigint AS count FROM audit_log \
+         GROUP BY command ORDER BY count DESC LIMIT 6",
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    HttpResponse::Ok().json(json!({ "total": total, "last_24h": last_24h, "top": top }))
 }
 
 /// Length-checked constant-time byte comparison to avoid timing leaks on the key.

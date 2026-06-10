@@ -113,8 +113,14 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   via `SONARR_URL`/`SONARR_API_KEY`/`RADARR_URL`/`RADARR_API_KEY`; clients live in
   `BotState.sonarr`/`.radarr`. URLs must be reachable from the bot container (LAN
   IP, not localhost). Old SonarQube-style `/sonar` `/radar` stubs removed.
-- Phases 7–11: dashboard, scheduler/worker logic, Docker hardening, CI/CD polish,
-  docs.
+- **Phase 7 — DONE (lightweight dashboard):** a self-contained single-page
+  dashboard (`dashboard/index.html`, vanilla JS) **served by the API** at `/` via
+  `include_str!` (no separate React app/container/build). Login with `API_KEY` →
+  JWT in localStorage → shows live stats + recent activity. Added `GET /api/stats`
+  (total, last_24h, top commands from `audit_log`). NOTE: `.dockerignore` must NOT
+  exclude `dashboard/` (only its build artifacts) or `include_str!` fails in CI.
+  Deploy = just redeploy the api image; reachable at `http://server:API_PORT/`.
+- Phases 8–11: scheduler/worker logic, Docker hardening, CI/CD polish, docs.
 
 ## Deploy / CI cheatsheet
 

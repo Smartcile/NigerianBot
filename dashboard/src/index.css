@@ -1,0 +1,68 @@
+:root {
+  --bg: #0f1117;
+  --panel: #181b24;
+  --panel2: #20242f;
+  --line: #2a2f3a;
+  --text: #e7e9ee;
+  --muted: #9aa3b2;
+  --accent: #5865f2;
+  --good: #3ba55d;
+  --bad: #ed4245;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+code { background: var(--panel2); padding: 2px 7px; border-radius: 6px; }
+.muted { color: var(--muted); }
+
+/* Login */
+.login { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 28px; width: 100%; max-width: 380px; box-shadow: 0 10px 40px rgba(0,0,0,.4);
+}
+.card h1 { margin: 0 0 4px; font-size: 22px; }
+.card p { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+input {
+  width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--panel2); color: var(--text); font-size: 15px; margin-bottom: 12px;
+}
+button {
+  padding: 12px 14px; border: 0; border-radius: 10px; cursor: pointer;
+  background: var(--accent); color: #fff; font-size: 15px; font-weight: 600;
+}
+button:hover { filter: brightness(1.08); }
+.card button { width: 100%; }
+.err { color: var(--bad); font-size: 13px; min-height: 18px; margin-top: 8px; }
+
+/* App */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+header h1 { margin: 0; font-size: 18px; }
+header button { background: var(--panel2); border: 1px solid var(--line); }
+main { max-width: 1000px; margin: 0 auto; padding: 24px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.stat .label { color: var(--muted); font-size: 13px; }
+.stat .value { font-size: 28px; font-weight: 700; margin-top: 6px; }
+.section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+.section h2 { margin: 0 0 14px; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.bar-row .name { width: 120px; font-size: 14px; }
+.bar { flex: 1; height: 10px; background: var(--panel2); border-radius: 6px; overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--accent); }
+.bar-row .n { width: 40px; text-align: right; color: var(--muted); font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; }
+.pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 13px; }
+.pill.good { background: rgba(59,165,93,.15); color: var(--good); }
+.pill.bad { background: rgba(237,66,69,.15); color: var(--bad); }
+.foot { color: var(--muted); font-size: 12px; text-align: center; margin-top: 10px; }

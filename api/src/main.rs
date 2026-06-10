@@ -66,12 +66,17 @@ async fn main() -> std::io::Result<()> {
 
     let state = web::Data::new(AppState { db, config });
 
+    // Directory of the built React dashboard (served as static files). Registered
+    // after the API routes so `/health` and `/api/*` always take precedence.
+    let static_dir = common::config::optional_or("DASHBOARD_DIR", "/app/static");
+
     info!(host = %bind.0, port = bind.1, "starting API server");
     HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
             .wrap(tracing_actix_web::TracingLogger::default())
             .configure(routes::configure)
+            .service(actix_files::Files::new("/", static_dir.clone()).index_file("index.html"))
     })
     .bind(bind)?
     .run()

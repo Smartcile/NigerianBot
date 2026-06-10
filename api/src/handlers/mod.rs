@@ -10,13 +10,6 @@ use crate::state::AppState;
 
 // ── Public ─────────────────────────────────────────────────────────────────
 
-/// The dashboard single-page app (login + live stats), embedded at build time.
-pub async fn dashboard() -> impl Responder {
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(include_str!("../../../dashboard/index.html"))
-}
-
 /// Liveness/health probe used by Docker and the deploy pipeline.
 pub async fn health() -> impl Responder {
     HttpResponse::Ok().json(json!({

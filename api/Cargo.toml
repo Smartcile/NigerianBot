@@ -12,6 +12,7 @@ path = "src/main.rs"
 common.workspace = true
 actix-web.workspace = true
 actix-rt.workspace = true
+actix-files.workspace = true
 tokio.workspace = true
 sqlx.workspace = true
 jsonwebtoken.workspace = true

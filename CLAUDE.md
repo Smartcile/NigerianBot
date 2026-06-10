@@ -129,8 +129,14 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   `digest_sonarr`, `digest_radarr`. The worker posts via `client.http` (REST).
   The `scheduler`/`worker` crates remain as workspace scaffolding. Reverse-proxy
   guidance lives in `docs/DEPLOYMENT.md` (BYO proxy — none bundled, by design).
-- Phases remaining: React dashboard (upgrade the lightweight one), Docker
-  hardening, CI/CD polish, docs.
+- **Phase 7 (React) — DONE:** the dashboard is now a real **Vite + React** app in
+  `dashboard/` (login + live stats + activity). `Dockerfile.api` has a `node:20`
+  frontend stage that `npm run build`s it to `dist/`, copied to `/app/static` in
+  the runtime image; the API serves it via `actix_files::Files` mounted at `/`
+  (registered AFTER `/health` + `/api/*` so those win). No separate container —
+  still one API image, BYO-proxy. `DASHBOARD_DIR` overrides the static path
+  (default `/app/static`). The old inline-HTML handler/include_str! is removed.
+- Phases remaining: Docker hardening, CI/CD polish, docs (all optional/minor).
 
 ## Deploy / CI cheatsheet
 

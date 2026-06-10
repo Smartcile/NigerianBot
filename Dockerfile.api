@@ -1,7 +1,16 @@
 # syntax=docker/dockerfile:1
 #
 # API service image. Lives at the repo ROOT (Portainer mis-resolves Dockerfiles
-# in subdirectories). Uses cargo-chef to cache the dependency compile layer.
+# in subdirectories). Builds the React dashboard (Node stage), then the Rust API
+# which serves the built static files. Uses cargo-chef to cache Rust deps.
+
+# ─── Frontend (React/Vite) ──────────────────────────────────────────────────
+FROM node:20-bookworm-slim AS frontend
+WORKDIR /dash
+COPY dashboard/package.json ./
+RUN npm install
+COPY dashboard/ ./
+RUN npm run build
 
 FROM rust:1-bookworm AS chef
 RUN cargo install cargo-chef --locked
@@ -25,6 +34,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/nigerian-api /usr/local/bin/nigerian-api
+# Built dashboard, served by the API at "/".
+COPY --from=frontend /dash/dist /app/static
 
 RUN useradd --create-home --uid 10001 appuser
 USER appuser

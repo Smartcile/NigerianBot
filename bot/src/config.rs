@@ -16,6 +16,12 @@ pub struct BotConfig {
     /// pool — each is a separate Discord bot that can hold its own voice
     /// connection, enabling simultaneous playback across channels.
     pub pool_tokens: Vec<String>,
+    /// Sonarr (TV) base URL + API key, when configured.
+    pub sonarr_url: Option<String>,
+    pub sonarr_api_key: Option<String>,
+    /// Radarr (movies) base URL + API key, when configured.
+    pub radarr_url: Option<String>,
+    pub radarr_api_key: Option<String>,
 }
 
 impl BotConfig {
@@ -41,6 +47,10 @@ impl BotConfig {
             guild_id,
             database_url: common::config::optional("DATABASE_URL"),
             pool_tokens,
+            sonarr_url: common::config::optional("SONARR_URL"),
+            sonarr_api_key: common::config::optional("SONARR_API_KEY"),
+            radarr_url: common::config::optional("RADARR_URL"),
+            radarr_api_key: common::config::optional("RADARR_API_KEY"),
         })
     }
 }

@@ -8,9 +8,9 @@ pub mod autoplay;
 pub mod bot;
 pub mod joinsound;
 pub mod music;
-pub mod radar;
+pub mod radarr;
 pub mod server;
-pub mod sonar;
+pub mod sonarr;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,6 +18,7 @@ use std::time::Duration;
 use serenity::all::{
     ChannelId, CommandDataOptionValue, CommandInteraction, ComponentInteraction, Context,
     CreateCommand, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
+    EditInteractionResponse,
 };
 use tracing::{error, warn};
 
@@ -28,8 +29,8 @@ pub fn all_definitions() -> Vec<CreateCommand> {
     vec![
         CreateCommand::new("ping").description("Health check — replies with Pong!"),
         music::definition(),
-        sonar::definition(),
-        radar::definition(),
+        sonarr::definition(),
+        radarr::definition(),
         server::definition(),
         bot::definition(),
         autoplay::definition(),
@@ -67,8 +68,8 @@ async fn route(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()
     match command.data.name.as_str() {
         "ping" => respond(ctx, command, "🏓 Pong!").await,
         "music" => music::handle(ctx, command).await,
-        "sonar" => sonar::handle(ctx, command).await,
-        "radar" => radar::handle(ctx, command).await,
+        "sonarr" => sonarr::handle(ctx, command).await,
+        "radarr" => radarr::handle(ctx, command).await,
         "server" => server::handle(ctx, command).await,
         "bot" => bot::handle(ctx, command).await,
         "autoplay" => autoplay::handle(ctx, command).await,
@@ -128,6 +129,22 @@ pub async fn respond_ephemeral(
         .ephemeral(true);
     command
         .create_response(&ctx.http, CreateInteractionResponse::Message(msg))
+        .await?;
+    Ok(())
+}
+
+/// Edit a previously-deferred response with text (for slow commands that called
+/// `command.defer(...)` first).
+pub async fn respond_edit(
+    ctx: &Context,
+    command: &CommandInteraction,
+    content: impl Into<String>,
+) -> anyhow::Result<()> {
+    command
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new().content(content.into()),
+        )
         .await?;
     Ok(())
 }

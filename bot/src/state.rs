@@ -11,6 +11,8 @@ use serenity::prelude::TypeMapKey;
 use songbird::Songbird;
 use sqlx::PgPool;
 
+use crate::services::arr::Arr;
+
 /// One member of the voice pool: a Discord bot that can hold a voice connection.
 pub struct VoiceBot {
     pub songbird: Arc<Songbird>,
@@ -97,14 +99,21 @@ pub struct BotState {
     pub music_path: String,
     /// Voice bots available for simultaneous playback.
     pub pool: VoicePool,
+    /// Sonarr (TV) client, when configured.
+    pub sonarr: Option<Arr>,
+    /// Radarr (movies) client, when configured.
+    pub radarr: Option<Arr>,
 }
 
 impl BotState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Option<PgPool>,
         http: reqwest::Client,
         music_path: String,
         pool: VoicePool,
+        sonarr: Option<Arr>,
+        radarr: Option<Arr>,
     ) -> Arc<Self> {
         Arc::new(Self {
             started_at: Instant::now(),
@@ -112,6 +121,8 @@ impl BotState {
             http,
             music_path,
             pool,
+            sonarr,
+            radarr,
         })
     }
 }

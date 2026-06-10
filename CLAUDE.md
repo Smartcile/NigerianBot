@@ -106,8 +106,15 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   (`cache-from/to type=registry ...:buildcache`). Dependency-only changes are
   slow once; code-only changes build in ~90s (was 20+ min). Verify Docker builds
   locally with the cached volumes `nb_target` / `nb_cargo` (see Phase 6 note).
-- Phases 5, 7–11: Sonar/Radar, dashboard, scheduler/worker logic, Docker
-  hardening, CI/CD polish, docs.
+- **Phase 5 — DONE:** `/sonarr` (TV) + `/radarr` (movies) wired to the Servarr v3
+  REST API (`services/arr.rs`: base URL + `X-Api-Key`). Subcommands: status, queue,
+  upcoming (calendar), search, and add (request → adds top lookup match with the
+  first quality profile + root folder, monitored, triggers a search). Configured
+  via `SONARR_URL`/`SONARR_API_KEY`/`RADARR_URL`/`RADARR_API_KEY`; clients live in
+  `BotState.sonarr`/`.radarr`. URLs must be reachable from the bot container (LAN
+  IP, not localhost). Old SonarQube-style `/sonar` `/radar` stubs removed.
+- Phases 7–11: dashboard, scheduler/worker logic, Docker hardening, CI/CD polish,
+  docs.
 
 ## Deploy / CI cheatsheet
 

@@ -55,6 +55,12 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
       # Folder (inside the container) where local music files live.
       MUSIC_MOUNT_PATH: /music
+      # Sonarr (TV) and Radarr (movies) — set URL + API key to enable /sonarr and
+      # /radarr. URL must be reachable from this container (e.g. http://host-ip:8989).
+      SONARR_URL: ${SONARR_URL:-}
+      SONARR_API_KEY: ${SONARR_API_KEY:-}
+      RADARR_URL: ${RADARR_URL:-}
+      RADARR_API_KEY: ${RADARR_API_KEY:-}
       # Log verbosity: info | debug | trace
       RUST_LOG: ${RUST_LOG:-info}
     volumes:

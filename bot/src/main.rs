@@ -148,6 +148,21 @@ async fn main() -> anyhow::Result<()> {
     let http = reqwest::Client::new();
     let music_path = common::config::optional_or("MUSIC_MOUNT_PATH", "/music");
 
+    // Sonarr / Radarr clients, when configured.
+    let sonarr = match (config.sonarr_url.clone(), config.sonarr_api_key.clone()) {
+        (Some(url), Some(key)) => Some(services::arr::Arr::new(http.clone(), url, key)),
+        _ => None,
+    };
+    let radarr = match (config.radarr_url.clone(), config.radarr_api_key.clone()) {
+        (Some(url), Some(key)) => Some(services::arr::Arr::new(http.clone(), url, key)),
+        _ => None,
+    };
+    info!(
+        sonarr = sonarr.is_some(),
+        radarr = radarr.is_some(),
+        "media integrations"
+    );
+
     // Build the voice pool: one Songbird manager per bot (primary + extras).
     let primary_songbird = songbird::Songbird::serenity();
     let mut pool_bots = vec![state::VoiceBot {
@@ -165,7 +180,7 @@ async fn main() -> anyhow::Result<()> {
     }
     let pool = state::VoicePool { bots: pool_bots };
     let pool_size = pool.len();
-    let bot_state = state::BotState::new(db, http, music_path, pool);
+    let bot_state = state::BotState::new(db, http, music_path, pool, sonarr, radarr);
 
     // GUILD_VOICE_STATES feeds the cache so we can find a user's voice channel.
     let primary_intents = GatewayIntents::GUILDS

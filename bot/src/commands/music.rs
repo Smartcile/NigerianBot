@@ -269,7 +269,7 @@ pub async fn play_once_on_free_bot(
     Ok(())
 }
 
-async fn build_source(state: &BotState, arg: &str) -> anyhow::Result<(Input, String)> {
+pub async fn build_source(state: &BotState, arg: &str) -> anyhow::Result<(Input, String)> {
     if arg.starts_with("http://") || arg.starts_with("https://") {
         let mut src = YoutubeDl::new(state.http.clone(), arg.to_string());
         let title = src
@@ -751,9 +751,9 @@ impl songbird::EventHandler for IdleLeaver {
 }
 
 /// Leaves the voice channel as soon as a track ends (for one-shot join sounds).
-struct LeaveOnEnd {
-    manager: Arc<Songbird>,
-    guild_id: GuildId,
+pub struct LeaveOnEnd {
+    pub manager: Arc<Songbird>,
+    pub guild_id: GuildId,
 }
 
 #[serenity::async_trait]

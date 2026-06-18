@@ -13,6 +13,7 @@ pub mod radarr;
 pub mod schedule;
 pub mod server;
 pub mod sonarr;
+pub mod swarm;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,6 +38,7 @@ pub fn all_definitions() -> Vec<CreateCommand> {
         bot::definition(),
         autoplay::definition(),
         joinsound::definition(),
+        swarm::definition(),
         schedule::definition(),
         admin::definition(),
     ]
@@ -79,6 +81,7 @@ async fn route(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()
         "bot" => bot::handle(ctx, command).await,
         "autoplay" => autoplay::handle(ctx, command).await,
         "joinsound" => joinsound::handle(ctx, command).await,
+        "swarm" => swarm::handle(ctx, command).await,
         "schedule" => schedule::handle(ctx, command).await,
         "admin" => admin::handle(ctx, command).await,
         other => respond_ephemeral(ctx, command, format!("Unknown command: `{other}`")).await,
@@ -94,6 +97,7 @@ pub async fn dispatch_autocomplete(
         "music" => music::handle_autocomplete(ctx, command).await,
         "autoplay" => autoplay::handle_autocomplete(ctx, command).await,
         "joinsound" => joinsound::handle_autocomplete(ctx, command).await,
+        "swarm" => swarm::handle_autocomplete(ctx, command).await,
         _ => Ok(()),
     }
 }

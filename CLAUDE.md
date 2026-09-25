@@ -25,7 +25,8 @@ A single Cargo workspace (`Cargo.toml` at the root) with these member crates:
 | `bot`       | `nigerian-bot`        | Discord bot (serenity) — slash commands & events           |
 | `api`       | `nigerian-api`        | REST API (actix-web) for the dashboard & control plane     |
 | `scheduler` | `nigerian-scheduler`  | Cron-style scheduled workflows (tokio-cron-scheduler)      |
-| `worker`    | `nigerian-worker`     | Async task / external-API processing                       |
+| `worker`    | `nigerian-worker`     | Async job queue — currently the download pipeline (yt-dlp) |
+| `telegram`  | `nigerian-telegram`   | Telegram bot (teloxide) — commands & notifications         |
 
 Non-Rust pieces: `dashboard/` (React, Phase 7), `migrations/` (SQL, Phase 3),
 `docker-compose.yml` (Phase 9), `.github/workflows/` (Phase 10).
@@ -160,10 +161,32 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   commands via `Role::rank`. `ADMIN_DISCORD_IDS` env (comma-separated).
 - Phases remaining: Docker hardening, CI/CD polish (all optional/minor).
 
+- **Downloads + Telegram + admin GUI (DONE — "the toolbelt"):** documented in
+  `docs/ROADMAP.md`. A `downloads` queue (migration 0006) is processed by the now-real
+  `worker` service: it claims jobs (`FOR UPDATE SKIP LOCKED`), runs `yt-dlp` into
+  `DOWNLOADS_PATH` (compose `downloads` volume), records title/size/error, and
+  notifies via Discord webhook + Telegram. `Dockerfile.worker` ships yt-dlp+ffmpeg.
+  Surfaces: Discord `/download <url>`; Telegram bot (`telegram/` crate, teloxide;
+  `/start|help|status|download|downloads|whoami`, `telegram_users` migration 0007);
+  API `GET/POST/DELETE /api/downloads` + finished files served at `/media`; and a
+  full themed dashboard (parody "419"/HONOURABLE BUSINESS skin — cosmetic only):
+  Overview, Downloads, Media (Sonarr/Radarr search + request), Schedules,
+  Users/roles, Telegram, and a live **Setup** page (env + steps + status per
+  service). New API groups: `/api/media/{service}/…`,
+  `/api/schedules`, `/api/users`, `/api/telegram/…`, `/api/setup/status`. The `Arr`
+  connector moved to `common::arr` (bot re-exports it; API uses it directly).
+  New images `nigerianbot-worker` + `nigerianbot-telegram` (make GHCR packages
+  public once). Env: `DOWNLOADS_PATH`, `PUBLIC_BASE_URL`, `DISCORD_NOTIFY_WEBHOOK`,
+  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `TELEGRAM_ADMIN_IDS`. Note: the bot
+  still can't be `cargo check`ed on Windows (songbird/libopus); verify bot changes
+  in Docker (see Phase 6 note).
+
 ## Deploy / CI cheatsheet
 
-Push to `main` → `.github/workflows/build.yml` builds `Dockerfile.bot` → pushes
-`ghcr.io/smartcile/nigerianbot-bot:latest` (GHCR package is public) → user does
+Push to `main` → `.github/workflows/build.yml` builds the images (matrix:
+`Dockerfile.bot`→bot, `Dockerfile.api`→api, `Dockerfile.worker`→worker,
+`Dockerfile.telegram`→telegram) → pushes to
+`ghcr.io/smartcile/nigerianbot-<svc>:latest` (GHCR packages are public) → user does
 "Pull and redeploy" in Portainer. Never use compose `build:` in Portainer (its
 builder mis-resolves paths) and never use `cache-to: type=gha` (504s). Use the
 full path to `gh`: `C:\Program Files\GitHub CLI\gh.exe`.

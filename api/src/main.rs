@@ -64,11 +64,28 @@ async fn main() -> std::io::Result<()> {
         });
     info!("database connected and migrations applied");
 
-    let state = web::Data::new(AppState { db, config });
+    let http = reqwest::Client::new();
+    let sonarr = match (config.sonarr_url.clone(), config.sonarr_api_key.clone()) {
+        (Some(url), Some(key)) => Some(common::arr::Arr::new(http.clone(), url, key)),
+        _ => None,
+    };
+    let radarr = match (config.radarr_url.clone(), config.radarr_api_key.clone()) {
+        (Some(url), Some(key)) => Some(common::arr::Arr::new(http.clone(), url, key)),
+        _ => None,
+    };
+
+    let state = web::Data::new(AppState {
+        db,
+        config,
+        sonarr,
+        radarr,
+    });
 
     // Directory of the built React dashboard (served as static files). Registered
     // after the API routes so `/health` and `/api/*` always take precedence.
     let static_dir = common::config::optional_or("DASHBOARD_DIR", "/app/static");
+    // Finished downloads, served read-only so the GUI can link/open files.
+    let downloads_dir = state.config.downloads_path.clone();
 
     info!(host = %bind.0, port = bind.1, "starting API server");
     HttpServer::new(move || {
@@ -76,6 +93,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(state.clone())
             .wrap(tracing_actix_web::TracingLogger::default())
             .configure(routes::configure)
+            .service(actix_files::Files::new("/media", downloads_dir.clone()))
             .service(actix_files::Files::new("/", static_dir.clone()).index_file("index.html"))
     })
     .bind(bind)?

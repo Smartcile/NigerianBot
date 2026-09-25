@@ -13,6 +13,8 @@ on:
       - "common/**"
       - "scheduler/**"
       - "worker/**"
+      - "telegram/**"
+      - "dashboard/**"
       - "migrations/**"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -33,6 +35,10 @@ jobs:
             image: nigerianbot-bot
           - dockerfile: Dockerfile.api
             image: nigerianbot-api
+          - dockerfile: Dockerfile.worker
+            image: nigerianbot-worker
+          - dockerfile: Dockerfile.telegram
+            image: nigerianbot-telegram
     steps:
       - uses: actions/checkout@v4
 

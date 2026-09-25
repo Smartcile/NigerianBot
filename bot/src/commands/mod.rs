@@ -7,6 +7,7 @@
 pub mod admin;
 pub mod autoplay;
 pub mod bot;
+pub mod download;
 pub mod joinsound;
 pub mod music;
 pub mod radarr;
@@ -32,6 +33,7 @@ pub fn all_definitions() -> Vec<CreateCommand> {
     vec![
         CreateCommand::new("ping").description("Health check — replies with Pong!"),
         music::definition(),
+        download::definition(),
         sonarr::definition(),
         radarr::definition(),
         server::definition(),
@@ -75,6 +77,7 @@ async fn route(ctx: &Context, command: &CommandInteraction) -> anyhow::Result<()
     match command.data.name.as_str() {
         "ping" => respond(ctx, command, "🏓 Pong!").await,
         "music" => music::handle(ctx, command).await,
+        "download" => download::handle(ctx, command).await,
         "sonarr" => sonarr::handle(ctx, command).await,
         "radarr" => radarr::handle(ctx, command).await,
         "server" => server::handle(ctx, command).await,

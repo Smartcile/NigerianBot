@@ -14,6 +14,20 @@ pub struct ApiConfig {
     pub api_key: String,
     /// Lifetime of issued tokens, in seconds.
     pub token_ttl_secs: i64,
+    /// Directory of finished downloads, served read-only at `/media`.
+    pub downloads_path: String,
+    /// Sonarr (TV) base URL + API key, when configured.
+    pub sonarr_url: Option<String>,
+    pub sonarr_api_key: Option<String>,
+    /// Radarr (movies) base URL + API key, when configured.
+    pub radarr_url: Option<String>,
+    pub radarr_api_key: Option<String>,
+    /// Whether a Telegram bot token is present (the telegram service is expected).
+    pub telegram_configured: bool,
+    /// Chat id the worker notifies on finished downloads (for display).
+    pub telegram_chat_id: Option<String>,
+    /// Public base URL of this API (for display / link building).
+    pub public_base_url: Option<String>,
 }
 
 impl ApiConfig {
@@ -33,6 +47,14 @@ impl ApiConfig {
             jwt_secret: common::config::optional_or("JWT_SECRET", "dev-insecure-change-me"),
             api_key: common::config::optional_or("API_KEY", ""),
             token_ttl_secs,
+            downloads_path: common::config::optional_or("DOWNLOADS_PATH", "/downloads"),
+            sonarr_url: common::config::optional("SONARR_URL"),
+            sonarr_api_key: common::config::optional("SONARR_API_KEY"),
+            radarr_url: common::config::optional("RADARR_URL"),
+            radarr_api_key: common::config::optional("RADARR_API_KEY"),
+            telegram_configured: common::config::optional("TELEGRAM_BOT_TOKEN").is_some(),
+            telegram_chat_id: common::config::optional("TELEGRAM_CHAT_ID"),
+            public_base_url: common::config::optional("PUBLIC_BASE_URL"),
         })
     }
 }

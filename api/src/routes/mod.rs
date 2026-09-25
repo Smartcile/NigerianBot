@@ -14,6 +14,63 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route("/auth/refresh", web::post().to(handlers::refresh))
                 // --- Dashboard ---
                 .route("/stats", web::get().to(handlers::stats))
+                // --- Downloads ---
+                .route("/downloads", web::get().to(handlers::downloads::list))
+                .route("/downloads", web::post().to(handlers::downloads::create))
+                .route(
+                    "/downloads/{id}",
+                    web::delete().to(handlers::downloads::delete),
+                )
+                // --- Media (Sonarr / Radarr) ---
+                .route(
+                    "/media/{service}/status",
+                    web::get().to(handlers::media::status),
+                )
+                .route(
+                    "/media/{service}/queue",
+                    web::get().to(handlers::media::queue),
+                )
+                .route(
+                    "/media/{service}/calendar",
+                    web::get().to(handlers::media::calendar),
+                )
+                .route(
+                    "/media/{service}/search",
+                    web::get().to(handlers::media::search),
+                )
+                .route("/media/{service}/add", web::post().to(handlers::media::add))
+                // --- Schedules ---
+                .route("/schedules", web::get().to(handlers::schedules::list))
+                .route("/schedules", web::post().to(handlers::schedules::create))
+                .route(
+                    "/schedules/{id}",
+                    web::delete().to(handlers::schedules::delete),
+                )
+                .route(
+                    "/schedules/{id}/enabled",
+                    web::post().to(handlers::schedules::set_enabled),
+                )
+                // --- Users & roles ---
+                .route("/users", web::get().to(handlers::users::list))
+                .route(
+                    "/users/{id}/role",
+                    web::post().to(handlers::users::set_role),
+                )
+                // --- Telegram ---
+                .route(
+                    "/telegram/status",
+                    web::get().to(handlers::telegram::status),
+                )
+                .route(
+                    "/telegram/users",
+                    web::get().to(handlers::telegram::list_users),
+                )
+                .route(
+                    "/telegram/users/{id}/role",
+                    web::post().to(handlers::telegram::set_role),
+                )
+                // --- Setup / integration status ---
+                .route("/setup/status", web::get().to(handlers::setup::status))
                 // --- Bot control ---
                 .route("/bot/status", web::get().to(handlers::bot_status))
                 .route("/bot/logs", web::get().to(handlers::bot_logs))

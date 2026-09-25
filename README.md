@@ -2,8 +2,9 @@
 
 A **production-grade Discord bot system written in Rust** — a microservices
 monorepo with a full-featured music engine, Sonarr/Radarr media requests, a
-React dashboard, PostgreSQL persistence, a JWT-secured REST API, and a
-push-to-deploy CI/CD pipeline. Built to run 24/7 in Docker.
+Vimeo/YouTube **download pipeline**, a **Telegram bot**, a React dashboard,
+PostgreSQL persistence, a JWT-secured REST API, and a push-to-deploy CI/CD
+pipeline. Built to run 24/7 in Docker.
 
 ![Build](https://github.com/Smartcile/NigerianBot/actions/workflows/build.yml/badge.svg)
 ![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)
@@ -33,8 +34,16 @@ push-to-deploy CI/CD pipeline. Built to run 24/7 in Docker.
   start downloading.
 - 🗓️ **Scheduler** — `/schedule` reminders, recurring announcements, and
   Sonarr/Radarr download digests; auto-prunes old logs.
-- 📊 **React dashboard** — log in with your API key for live stats, top commands,
-  and recent activity (served by the API — bring your own HTTPS).
+- 📊 **React dashboard** — a full control panel behind your API key:
+  Overview, **Downloads**, **Media** (Sonarr/Radarr search + request), **Schedules**,
+  **Users/roles**, and **Telegram** — dressed in a parody "HONOURABLE BUSINESS"
+  419 skin (cosmetic only; all actions are real). Served by the API — bring your
+  own HTTPS.
+- 📥 **Download pipeline** — queue any Vimeo/YouTube/URL (from Discord
+  `/download`, Telegram, or the web GUI); the **worker** service fetches it with
+  `yt-dlp` onto the server and notifies Discord/Telegram when it's done.
+- ✈️ **Telegram bot** — `/download`, `/downloads`, `/status`, `/whoami` over the
+  same core and database as the Discord bot.
 - 🗄️ **Persistence & audit** — every command is logged to PostgreSQL; settings,
   queues, triggers, and schedules survive restarts.
 - 🚀 **Push-to-deploy** — `git push` → GitHub Actions builds images → your server
@@ -65,8 +74,9 @@ A Cargo workspace of services that share a `common` library and one database:
 |---------------|----------------------|-----------------------------------------------|
 | **bot**       | serenity, songbird   | Discord bot, voice, media, in-process scheduler |
 | **api**       | actix-web + React    | REST API (JWT) + serves the dashboard SPA     |
-| **common**    | (library)            | Shared config, telemetry, DB pool             |
-| scheduler / worker | tokio           | Workspace scaffolding (scheduling runs in the bot) |
+| **worker**    | tokio, yt-dlp        | Background jobs — the download pipeline       |
+| **telegram**  | teloxide             | Telegram bot over the same core               |
+| **common**    | (library)            | Shared config, telemetry, DB pool, media helpers |
 
 ---
 
@@ -76,6 +86,7 @@ A Cargo workspace of services that share a `common` library and one database:
 |---------|--------------|
 | `/music play <song\|url>` | Play from your library (autocompletes) or a URL — with buttons |
 | `/music pause · stop · queue · volume` | Playback controls |
+| `/download <url>` | Queue a Vimeo/YouTube/URL to download onto the server |
 | `/autoplay set·clear·list` | Auto-play when someone joins a channel (stays) |
 | `/joinsound set·clear·list` | Entrance sound when someone joins, then leave |
 | `/sonarr status·queue·upcoming·search·add` | Sonarr (TV): browse & request shows |
@@ -90,17 +101,17 @@ A Cargo workspace of services that share a `common` library and one database:
 **Rust (2021)** · Bot: [serenity](https://github.com/serenity-rs/serenity) +
 [songbird](https://github.com/serenity-rs/songbird) · API: [actix-web](https://actix.rs/) ·
 Dashboard: **React + Vite** · DB: PostgreSQL + [sqlx](https://github.com/launchbadge/sqlx) ·
-Audio: ffmpeg + yt-dlp · Auth: JWT · CI/CD: GitHub Actions → GHCR · Deploy: Docker
-Compose / Portainer.
+Audio: ffmpeg + yt-dlp · Telegram: [teloxide](https://github.com/teloxide/teloxide) ·
+Auth: JWT · CI/CD: GitHub Actions → GHCR · Deploy: Docker Compose / Portainer.
 
 ---
 
 ## ⚙️ How it's deployed
 
 1. Push to `main`.
-2. **GitHub Actions** builds the `bot` and `api` images (cargo-chef + registry
-   cache keep it fast; the API image also builds the React dashboard) and pushes
-   them to the **GitHub Container Registry**.
+2. **GitHub Actions** builds the `bot`, `api`, `worker`, and `telegram` images
+   (cargo-chef + registry cache keep it fast; the API image also builds the React
+   dashboard) and pushes them to the **GitHub Container Registry**.
 3. The server (e.g. **Portainer**) pulls the prebuilt images — no compiling on the
    host. The dashboard is at `http://<server>:8000/`.
 
@@ -128,6 +139,8 @@ cargo run -p bot            # or -p api
 | Music engine (DAVE, queue, buttons, autoplay, joinsound, voice pool) | ✅ |
 | Sonarr + Radarr integrations (incl. requests) | ✅ |
 | React dashboard | ✅ |
+| Download pipeline (Vimeo/YouTube/URL → worker → storage) | ✅ |
+| Telegram bot (commands + notifications) | ✅ |
 | Scheduler (reminders, recurring, media digests, housekeeping) | ✅ |
 | CI/CD with cargo-chef caching | ✅ |
 | HTTPS | bring your own reverse proxy ([docs](docs/DEPLOYMENT.md)) |

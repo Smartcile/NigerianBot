@@ -1,17 +1,38 @@
-//! NigerianBot worker service — processes async tasks and external API calls.
+//! NigerianBot worker service — processes the background job queue.
 //!
-//! Phase 1 runs a poll loop that ticks on an interval. Phase 8 replaces the
-//! no-op tick with real queue processing.
+//! Currently: the download pipeline (Vimeo / YouTube / any yt-dlp URL). Claims
+//! `queued` rows from the `downloads` table, fetches the file into
+//! `DOWNLOADS_PATH`, records the result, and notifies Discord/Telegram.
 
 mod config;
+mod downloads;
+mod notify;
 mod tasks;
 
 use std::time::Duration;
 
 use anyhow::Context as _;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::config::WorkerConfig;
+
+/// Connect to Postgres, retrying briefly so the worker tolerates the database
+/// still warming up on first stack startup.
+async fn connect_db_with_retry(url: &str) -> anyhow::Result<sqlx::PgPool> {
+    const MAX_ATTEMPTS: u32 = 10;
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        match common::db::connect(url).await {
+            Ok(pool) => return Ok(pool),
+            Err(e) if attempt < MAX_ATTEMPTS => {
+                warn!(attempt, error = %e, "database not ready, retrying in 2s");
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+            Err(e) => return Err(e.context("could not connect to the database")),
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -19,14 +40,28 @@ async fn main() -> anyhow::Result<()> {
     common::telemetry::init("worker");
 
     let config = WorkerConfig::from_env().context("invalid worker configuration")?;
+
+    let pool = connect_db_with_retry(&config.database_url).await?;
+    sqlx::migrate!("../migrations")
+        .run(&pool)
+        .await
+        .context("failed to run database migrations")?;
+    info!("database connected and migrations applied");
+
+    // Make sure the download directory exists (the volume mount usually does).
+    if let Err(e) = std::fs::create_dir_all(&config.downloads_path) {
+        warn!(path = %config.downloads_path, error = %e, "could not create downloads directory");
+    }
+
     info!(
         interval_secs = config.poll_interval_secs,
-        "worker started — task processing arrives in Phase 8"
+        downloads_path = %config.downloads_path,
+        "worker started"
     );
 
     let interval = Duration::from_secs(config.poll_interval_secs);
     loop {
-        tasks::run_once().await;
+        tasks::run_once(&pool, &config).await;
         tokio::time::sleep(interval).await;
     }
 }

@@ -95,6 +95,59 @@ services:
       API_KEY: ${API_KEY:?set API_KEY in Portainer env}
       # Secret used to sign JWTs.
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Portainer env}
+      # Finished downloads, served read-only at /media for the web GUI.
+      DOWNLOADS_PATH: /downloads
+      # Media panel (Sonarr/Radarr). URL must be reachable from this container.
+      SONARR_URL: ${SONARR_URL:-}
+      SONARR_API_KEY: ${SONARR_API_KEY:-}
+      RADARR_URL: ${RADARR_URL:-}
+      RADARR_API_KEY: ${RADARR_API_KEY:-}
+      # Lets the Telegram panel show whether the bot is configured.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      # Shown on the Setup page (and used to build file links).
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - downloads:/downloads:ro
+
+  # Background job queue: currently the download pipeline (Vimeo/YouTube/URL).
+  worker:
+    image: ghcr.io/smartcile/nigerianbot-worker:latest
+    container_name: nigerian-worker
+    restart: unless-stopped
+    pull_policy: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
+      DOWNLOADS_PATH: /downloads
+      WORKER_POLL_INTERVAL_SECS: ${WORKER_POLL_INTERVAL_SECS:-30}
+      # Optional notifications when a download finishes.
+      DISCORD_NOTIFY_WEBHOOK: ${DISCORD_NOTIFY_WEBHOOK:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - downloads:/downloads
+
+  # Telegram surface: commands + notifications over the same core.
+  telegram:
+    image: ghcr.io/smartcile/nigerianbot-telegram:latest
+    container_name: nigerian-telegram
+    restart: unless-stopped
+    pull_policy: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?set TELEGRAM_BOT_TOKEN in Portainer env}
+      DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
+      # Comma-separated Telegram user ids always treated as Admin (bootstrap).
+      TELEGRAM_ADMIN_IDS: ${TELEGRAM_ADMIN_IDS:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       RUST_LOG: ${RUST_LOG:-info}
 
   # Voice-cloning TTS (XTTS-v2). Built ON THIS HOST (needs a GPU + the NVIDIA
@@ -125,3 +178,4 @@ volumes:
   pgdata:
   voices:
   tts_models:
+  downloads:

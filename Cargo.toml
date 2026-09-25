@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["common", "bot", "api", "scheduler", "worker"]
+members = ["common", "bot", "api", "scheduler", "worker", "telegram"]
 
 [workspace.package]
 version = "0.1.0"
@@ -43,6 +43,9 @@ tracing-actix-web = "0.7"
 
 # Scheduler
 tokio-cron-scheduler = "0.10"
+
+# Telegram surface. rustls (not native-tls) so the image needs no OpenSSL.
+teloxide = { version = "0.13", default-features = false, features = ["rustls", "macros", "ctrlc_handler"] }
 
 # Shared crate
 common = { path = "common" }

@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1
+#
+# Telegram service image. Long-polling bot over the shared core; rustls means no
+# OpenSSL is needed at build or runtime. Uses cargo-chef for dependency caching.
+
+FROM rust:1-bookworm AS chef
+RUN cargo install cargo-chef --locked
+WORKDIR /app
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+# Cached unless Cargo.toml/Cargo.lock change.
+RUN cargo chef cook --release --recipe-path recipe.json -p telegram
+COPY . .
+RUN cargo build --release -p telegram
+
+# ─── Runtime stage ─────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/nigerian-telegram /usr/local/bin/nigerian-telegram
+
+RUN useradd --create-home --uid 10001 appuser
+USER appuser
+
+ENTRYPOINT ["/usr/local/bin/nigerian-telegram"]

@@ -37,7 +37,12 @@ COPY --from=builder /app/target/release/nigerian-api /usr/local/bin/nigerian-api
 # Built dashboard, served by the API at "/".
 COPY --from=frontend /dash/dist /app/static
 
-RUN useradd --create-home --uid 10001 appuser
+# Seed /downloads owned by appuser so a FRESH named volume inherits write
+# permission regardless of whether the API or the worker initializes it. The API
+# mounts it read-only; the worker writes here.
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /downloads \
+    && chown 10001:10001 /downloads
 USER appuser
 
 EXPOSE 8000

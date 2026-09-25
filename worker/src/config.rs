@@ -4,11 +4,19 @@ use anyhow::Result;
 
 #[derive(Clone, Debug)]
 pub struct WorkerConfig {
-    /// Database URL the worker polls for queued tasks (Phase 8).
-    #[allow(dead_code)] // reserved for Phase 8 (worker logic)
-    pub database_url: Option<String>,
+    /// Database URL the worker polls for queued jobs (required).
+    pub database_url: String,
     /// Seconds between poll cycles.
     pub poll_interval_secs: u64,
+    /// Directory (inside the container) where finished downloads are written.
+    pub downloads_path: String,
+    /// Optional outbound notification targets (set either or both).
+    pub discord_webhook: Option<String>,
+    pub telegram_bot_token: Option<String>,
+    pub telegram_chat_id: Option<String>,
+    /// Optional public base URL of the API, used to build file links in
+    /// notifications (e.g. `https://bot.example.com` → `.../media/<file>`).
+    pub public_base_url: Option<String>,
 }
 
 impl WorkerConfig {
@@ -18,8 +26,13 @@ impl WorkerConfig {
             .unwrap_or(30);
 
         Ok(Self {
-            database_url: common::config::optional("DATABASE_URL"),
+            database_url: common::config::require("DATABASE_URL")?,
             poll_interval_secs,
+            downloads_path: common::config::optional_or("DOWNLOADS_PATH", "/downloads"),
+            discord_webhook: common::config::optional("DISCORD_NOTIFY_WEBHOOK"),
+            telegram_bot_token: common::config::optional("TELEGRAM_BOT_TOKEN"),
+            telegram_chat_id: common::config::optional("TELEGRAM_CHAT_ID"),
+            public_base_url: common::config::optional("PUBLIC_BASE_URL"),
         })
     }
 }

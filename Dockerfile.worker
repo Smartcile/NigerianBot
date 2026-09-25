@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1
+#
+# Worker service image — runs the background job queue (currently: downloads).
+# Needs yt-dlp + ffmpeg at runtime to fetch and merge media. Uses cargo-chef so
+# the dependency compile is cached and only changed code recompiles.
+
+FROM rust:1-bookworm AS chef
+RUN cargo install cargo-chef --locked
+WORKDIR /app
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+# Cached unless Cargo.toml/Cargo.lock change.
+RUN cargo chef cook --release --recipe-path recipe.json -p worker
+COPY . .
+RUN cargo build --release -p worker
+
+# ─── Runtime stage ─────────────────────────────────────────────────────────
+# ca-certificates (TLS) + ffmpeg/yt-dlp for media fetching.
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg curl \
+    && curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
+        -o /usr/local/bin/yt-dlp \
+    && chmod a+rx /usr/local/bin/yt-dlp \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/nigerian-worker /usr/local/bin/nigerian-worker
+
+# The downloads directory is a volume; seed it owned by appuser so a FRESH
+# named volume inherits write permission for the non-root user.
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /downloads \
+    && chown 10001:10001 /downloads
+USER appuser
+
+ENTRYPOINT ["/usr/local/bin/nigerian-worker"]

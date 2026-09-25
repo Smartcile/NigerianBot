@@ -1,5 +1,12 @@
 //! HTTP request handlers.
 
+pub mod downloads;
+pub mod media;
+pub mod schedules;
+pub mod setup;
+pub mod telegram;
+pub mod users;
+
 use actix_web::{web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use serde_json::json;

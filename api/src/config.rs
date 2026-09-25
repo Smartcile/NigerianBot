@@ -26,6 +26,10 @@ pub struct ApiConfig {
     /// Radarr (movies) base URL + API key, when configured.
     pub radarr_url: Option<String>,
     pub radarr_api_key: Option<String>,
+    /// Path (as Sonarr sees it) of the shared downloads folder used for imports.
+    pub sonarr_import_path: String,
+    /// Path (as Radarr sees it) of the shared downloads folder used for imports.
+    pub radarr_import_path: String,
     /// Whether a Telegram bot token is present (the telegram service is expected).
     pub telegram_configured: bool,
     /// Chat id the worker notifies on finished downloads (for display).
@@ -58,6 +62,8 @@ impl ApiConfig {
             sonarr_api_key: common::config::optional("SONARR_API_KEY"),
             radarr_url: common::config::optional("RADARR_URL"),
             radarr_api_key: common::config::optional("RADARR_API_KEY"),
+            sonarr_import_path: common::config::optional_or("SONARR_IMPORT_PATH", "/downloads"),
+            radarr_import_path: common::config::optional_or("RADARR_IMPORT_PATH", "/downloads"),
             telegram_configured: common::config::optional("TELEGRAM_BOT_TOKEN").is_some(),
             telegram_chat_id: common::config::optional("TELEGRAM_CHAT_ID"),
             public_base_url: common::config::optional("PUBLIC_BASE_URL"),

@@ -421,8 +421,10 @@ function Overview({ api }) {
 function Downloads({ api }) {
   const [items, setItems] = useState([])
   const [url, setUrl] = useState('')
+  const [saveAs, setSaveAs] = useState('')
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
+  const [importFile, setImportFile] = useState(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -445,9 +447,13 @@ function Downloads({ api }) {
     setBusy(true)
     setNote('')
     try {
-      const row = await api.post('/api/downloads', { url: url.trim() })
+      const row = await api.post('/api/downloads', {
+        url: url.trim(),
+        save_as: saveAs.trim() || null,
+      })
       setNote(row?.id ? `SUCCESS! Cargo #${row.id} is on the way.` : 'Submitted.')
       setUrl('')
+      setSaveAs('')
       await refresh()
     } catch {
       setNote('TRANSACTION FAILED. Kindly try again.')
@@ -467,9 +473,15 @@ function Downloads({ api }) {
         <form className="dlform" onSubmit={submit}>
           <input
             type="text"
-            placeholder="PASTE THE CARGO URL e.g. https://vimeo.com/707452756"
+            placeholder="PASTE THE CARGO URL (VIMEO / YOUTUBE / TUBI / ANY)"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="SAVE AS (optional) e.g. Show - S01E05 - Title"
+            value={saveAs}
+            onChange={(e) => setSaveAs(e.target.value)}
           />
           <button type="submit" disabled={busy}>
             {busy ? 'SENDING…' : '💸 SHIP IT'}
@@ -509,9 +521,17 @@ function Downloads({ api }) {
                     {d.status === 'failed' && d.error ? (
                       <div className="err small">{d.error}</div>
                     ) : null}
+                    {d.status === 'downloading' ? (
+                      <div className="dlbar" title={(d.progress || 0) + '%'}>
+                        <span style={{ width: Math.max(1, d.progress || 0) + '%' }} />
+                      </div>
+                    ) : null}
                   </td>
                   <td>
                     <span className={'pill ' + d.status}>{d.status}</span>
+                    {d.status === 'downloading' ? (
+                      <span className="pct"> {d.progress || 0}%</span>
+                    ) : null}
                   </td>
                   <td>{d.size_bytes ? fmtSize(d.size_bytes) : '—'}</td>
                   <td className="row-actions">
@@ -519,6 +539,11 @@ function Downloads({ api }) {
                       <a href={'/media/' + d.file_path} target="_blank" rel="noreferrer">
                         COLLECT
                       </a>
+                    ) : null}
+                    {d.status === 'done' && d.file_path ? (
+                      <button className="link" onClick={() => setImportFile(d.file_path)}>
+                        📥 IMPORT
+                      </button>
                     ) : null}
                     <button className="link" onClick={() => remove(d.id)}>
                       DESTROY
@@ -536,7 +561,268 @@ function Downloads({ api }) {
           </tbody>
         </table>
       </section>
+
+      {importFile ? (
+        <ImportModal api={api} file={importFile} onClose={() => setImportFile(null)} />
+      ) : null}
     </>
+  )
+}
+
+/* Link a finished download to a library item and import via Sonarr/Radarr. */
+function ImportModal({ api, file, onClose }) {
+  const [service, setService] = useState('sonarr')
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [linkTerm, setLinkTerm] = useState('')
+  const [linkResults, setLinkResults] = useState([])
+  const [chosen, setChosen] = useState(null)
+  const [episodes, setEpisodes] = useState([])
+  const [episodeId, setEpisodeId] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(
+    async (svc) => {
+      setLoading(true)
+      setMsg('')
+      setData(null)
+      setChosen(null)
+      setEpisodes([])
+      setLinkResults([])
+      setLinkTerm('')
+      setEpisodeId('')
+      try {
+        setData(await api.get(`/api/media/${svc}/manual-import?file=${encodeURIComponent(file)}`))
+      } catch {
+        setMsg('COULD NOT REACH THE MEDIA SERVICE.')
+      }
+      setLoading(false)
+    },
+    [api, file],
+  )
+
+  useEffect(() => {
+    load(service)
+  }, [load, service])
+
+  const candidate = data?.candidates?.[0]
+
+  function entryFor(c, override) {
+    if (service === 'radarr') {
+      return {
+        path: c.path,
+        movieId: override?.movieId ?? c.movie?.id,
+        quality: c.quality,
+        languages: c.languages,
+      }
+    }
+    return {
+      path: c.path,
+      seriesId: override?.seriesId ?? c.series?.id,
+      episodeIds: override?.episodeIds ?? (c.episodes || []).map((e) => e.id),
+      quality: c.quality,
+      languages: c.languages,
+      releaseGroup: c.releaseGroup,
+    }
+  }
+
+  async function doImport(files) {
+    setBusy(true)
+    setMsg('')
+    try {
+      await api.post(`/api/media/${service}/manual-import`, { import_mode: 'move', files })
+      setMsg('✅ IMPORT STARTED — the library will rename & move it per your settings.')
+    } catch {
+      setMsg('IMPORT FAILED. CHECK THE MATCH AND TRY AGAIN.')
+    }
+    setBusy(false)
+  }
+
+  async function importProvided() {
+    if (!candidate) return
+    const entry = entryFor(candidate)
+    if (service === 'sonarr' && (!entry.seriesId || !entry.episodeIds.length)) {
+      setMsg("SONARR COULDN'T MATCH — LINK A SHOW/EPISODE BELOW.")
+      return
+    }
+    if (service === 'radarr' && !entry.movieId) {
+      setMsg("RADARR COULDN'T MATCH — SEARCH FOR THE MOVIE BELOW.")
+      return
+    }
+    await doImport([entry])
+  }
+
+  async function searchLink(e) {
+    e.preventDefault()
+    setMsg('')
+    try {
+      const v = await api.get(`/api/media/${service}/search?term=${encodeURIComponent(linkTerm)}`)
+      setLinkResults((v?.results || []).filter((r) => r.in_library))
+    } catch {
+      setMsg('SEARCH FAILED.')
+    }
+  }
+
+  async function pickChosen(r) {
+    setChosen(r)
+    setEpisodeId('')
+    if (service === 'sonarr') {
+      try {
+        const v = await api.get(`/api/media/sonarr/episodes?series_id=${r.id}`)
+        setEpisodes(v?.episodes || [])
+      } catch {
+        setEpisodes([])
+      }
+    }
+  }
+
+  async function importLinked() {
+    if (!candidate || !chosen) {
+      setMsg('PICK A MATCH FIRST.')
+      return
+    }
+    const override =
+      service === 'radarr'
+        ? { movieId: chosen.id }
+        : { seriesId: chosen.id, episodeIds: episodeId ? [Number(episodeId)] : [] }
+    if (service === 'sonarr' && !override.episodeIds.length) {
+      setMsg('PICK AN EPISODE.')
+      return
+    }
+    await doImport([entryFor(candidate, override)])
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>📥 IMPORT “{file}”</h2>
+          <button className="close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+
+        <div className="tabs sub">
+          {['sonarr', 'radarr'].map((s) => (
+            <button
+              key={s}
+              className={'tab ' + (service === s ? 'active' : '')}
+              onClick={() => setService(s)}
+            >
+              {s === 'radarr' ? '🎬 RADARR' : '📺 SONARR'}
+            </button>
+          ))}
+        </div>
+
+        {loading ? <div className="muted">LOADING…</div> : null}
+
+        {!loading && data && !candidate ? (
+          <div className="notice">
+            {service.toUpperCase()} can't see this file. Make sure the shared folder is mounted into
+            it and set{' '}
+            <code>{service === 'radarr' ? 'RADARR_IMPORT_PATH' : 'SONARR_IMPORT_PATH'}</code>{' '}
+            (currently <code>{data.import_path}</code>).
+          </div>
+        ) : null}
+
+        {candidate ? (
+          <>
+            <div className="fineprint">
+              FILE: <code>{candidate.path || candidate.name}</code>
+              {candidate.quality?.quality?.name ? (
+                <>
+                  {' '}
+                  · QUALITY: <b>{candidate.quality.quality.name}</b>
+                </>
+              ) : null}
+            </div>
+
+            {service === 'sonarr' ? (
+              <div className="fineprint">
+                MATCHED:{' '}
+                {candidate.series?.title ? <b>{candidate.series.title}</b> : '— none —'}{' '}
+                {candidate.episodes?.length
+                  ? (candidate.episodes || [])
+                      .map((e) => `S${pad(e.seasonNumber)}E${pad(e.episodeNumber)}`)
+                      .join(', ')
+                  : null}
+              </div>
+            ) : (
+              <div className="fineprint">
+                MATCHED:{' '}
+                {candidate.movie?.title ? (
+                  <b>
+                    {candidate.movie.title} ({candidate.movie.year})
+                  </b>
+                ) : (
+                  '— none —'
+                )}
+              </div>
+            )}
+
+            {candidate.rejections?.length ? (
+              <div className="err small">
+                {(candidate.rejections || []).map((r) => r.reason).join(' · ')}
+              </div>
+            ) : null}
+
+            <button onClick={importProvided} disabled={busy} style={{ marginTop: 8 }}>
+              ✅ IMPORT (USE THIS MATCH)
+            </button>
+
+            <hr />
+
+            <div className="fineprint">
+              LINK TO A DIFFERENT {service === 'radarr' ? 'MOVIE' : 'SHOW / EPISODE'} IN YOUR
+              LIBRARY:
+            </div>
+            <form className="dlform" onSubmit={searchLink}>
+              <input
+                value={linkTerm}
+                onChange={(e) => setLinkTerm(e.target.value)}
+                placeholder="Search your library"
+              />
+              <button type="submit">🔎 SEARCH</button>
+            </form>
+            <div className="chips">
+              {linkResults.map((r) => (
+                <span
+                  key={r.id}
+                  className={'chip ' + (chosen?.id === r.id ? 'chip-on' : '')}
+                  onClick={() => pickChosen(r)}
+                >
+                  {r.title} {r.year ? `(${r.year})` : ''}
+                </span>
+              ))}
+            </div>
+
+            {chosen && service === 'sonarr' ? (
+              <select
+                value={episodeId}
+                onChange={(e) => setEpisodeId(e.target.value)}
+                style={{ marginTop: 8 }}
+              >
+                <option value="">— PICK EPISODE —</option>
+                {episodes.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    S{pad(e.seasonNumber)}E{pad(e.episodeNumber)} — {e.title}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+
+            {chosen ? (
+              <button onClick={importLinked} disabled={busy} style={{ marginTop: 8 }}>
+                ✅ IMPORT INTO “{chosen.title}”
+              </button>
+            ) : null}
+          </>
+        ) : null}
+
+        {msg ? <div className="notice">{msg}</div> : null}
+      </div>
+    </div>
   )
 }
 
@@ -1211,6 +1497,7 @@ const SETUP = [
     env: [
       ['SONARR_URL', 'e.g. http://192.168.1.10:8989 (reachable from containers).'],
       ['SONARR_API_KEY', 'Sonarr → Settings → General → API Key.'],
+      ['SONARR_IMPORT_PATH', 'How Sonarr sees the shared downloads folder (for Import).'],
     ],
     steps: [
       'Use the LAN IP (not localhost) so containers can reach it.',
@@ -1227,6 +1514,7 @@ const SETUP = [
     env: [
       ['RADARR_URL', 'e.g. http://192.168.1.10:7878 (reachable from containers).'],
       ['RADARR_API_KEY', 'Radarr → Settings → General → API Key.'],
+      ['RADARR_IMPORT_PATH', 'How Radarr sees the shared downloads folder (for Import).'],
     ],
     steps: [
       'Use the LAN IP so the API container can reach it.',
@@ -1262,10 +1550,10 @@ const SETUP = [
       ['YTDLP_COOKIES_FILE', 'Stored cookies path (advanced; default /cookies/cookies.txt).'],
     ],
     steps: [
-      'The stack creates the "downloads" and "cookies" volumes.',
-      'Queue a URL from the Downloads tab (CARGO).',
+      'Set DOWNLOADS_HOST_PATH to a host folder Sonarr/Radarr also mount (chown 10001:10001).',
+      'Queue a URL from the Downloads tab (CARGO); add a "Save as" name for clean matching.',
       'For Vimeo/login-gated videos, upload cookies.txt in the Downloads tab.',
-      'Finished files are downloadable at /media/<file>.',
+      'Click 📥 IMPORT on a finished item to send it to Sonarr/Radarr.',
     ],
     usage: ['Downloads tab', 'Discord /download <url>', 'Telegram /download <url>'],
   },

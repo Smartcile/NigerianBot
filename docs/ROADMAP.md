@@ -37,8 +37,15 @@ Save a URL's video to server storage; link it from Discord/Telegram/web.
 - ✅ **Notifications** when a download finishes (Discord webhook + Telegram chat).
 - ⬜ **Audio extraction** into the music library (toggle: video / audio / both).
 - ⬜ **Format & quality chooser** (max height, container, subtitles) from the GUI.
+- ✅ **Live progress** — the worker streams yt-dlp's `%` into `downloads.progress`;
+  the GUI shows a bar + percentage.
+- ✅ **Cookies upload** from the GUI (for login-gated sites) — no server access.
+- ✅ **Sonarr/Radarr import** — a "Save as" filename + an **Import** button that
+  pulls Manual Import candidates and links the file to an existing series/episode
+  or movie, letting the *arr app rename/move it per its naming settings.
+- ✅ **YouTube / Tubi** — any yt-dlp URL works; the image ships **Deno** for
+  reliable YouTube extraction (Tubi may need cookies / a US session).
 - ⬜ **Playlists / channels**, per-item rows, and download history/retention.
-- ⬜ **Vimeo specifics**: password'd / embed-only videos via cookies file.
 
 ## Track 2 — Telegram surface
 

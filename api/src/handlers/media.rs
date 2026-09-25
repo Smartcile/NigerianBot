@@ -226,6 +226,7 @@ pub async fn search(
                 .take(12)
                 .map(|m| {
                     json!({
+                        "id": m["id"],
                         "title": m["title"],
                         "year": m["year"],
                         "overview": m["overview"],
@@ -321,6 +322,125 @@ pub async fn add(
 
     match arr.post::<Value, Value>(post_path, &item).await {
         Ok(_) => HttpResponse::Ok().json(json!({ "added": true, "title": title })),
+        Err(e) => arr_error(e),
+    }
+}
+
+// ── Manual import (link a finished download to the library) ─────────────────
+
+fn import_path(state: &AppState, service: &str) -> String {
+    if service == "radarr" {
+        state.config.radarr_import_path.clone()
+    } else {
+        state.config.sonarr_import_path.clone()
+    }
+}
+
+#[derive(Deserialize)]
+pub struct FileQuery {
+    /// File name relative to the shared downloads folder.
+    pub file: String,
+}
+
+/// `GET /api/media/{service}/manual-import?file=<name>` — Sonarr/Radarr's parsed
+/// candidates for a finished download, so it can be matched/imported.
+pub async fn manual_import(
+    state: web::Data<AppState>,
+    _user: AuthUser,
+    path: web::Path<String>,
+    query: web::Query<FileQuery>,
+) -> HttpResponse {
+    let service = path.into_inner();
+    let Some(arr) = client(&state, &service) else {
+        return not_configured(&service);
+    };
+    let import_path = import_path(&state, &service);
+    let file_path = format!("{}/{}", import_path.trim_end_matches('/'), query.file);
+
+    match arr
+        .get_q::<Value>(
+            "manualimport",
+            &[
+                ("folder", import_path.as_str()),
+                ("filterExistingFiles", "false"),
+            ],
+        )
+        .await
+    {
+        Ok(data) => {
+            let all: Vec<Value> = data.as_array().cloned().unwrap_or_default();
+            // Prefer the exact file; if nothing matches, return the whole folder.
+            let exact: Vec<Value> = all
+                .iter()
+                .filter(|c| {
+                    c["path"].as_str() == Some(file_path.as_str())
+                        || c["name"].as_str() == Some(query.file.as_str())
+                })
+                .cloned()
+                .collect();
+            let candidates = if exact.is_empty() { all } else { exact };
+            HttpResponse::Ok().json(json!({
+                "import_path": import_path,
+                "file_path": file_path,
+                "candidates": candidates,
+            }))
+        }
+        Err(e) => arr_error(e),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ImportBody {
+    #[serde(default)]
+    pub import_mode: Option<String>,
+    /// Pre-built ManualImport file entries (seriesId+episodeIds, or movieId).
+    pub files: Value,
+}
+
+/// `POST /api/media/{service}/manual-import` — run Sonarr/Radarr's import, which
+/// renames/moves per the app's configured naming scheme.
+pub async fn manual_import_confirm(
+    state: web::Data<AppState>,
+    _user: AuthUser,
+    path: web::Path<String>,
+    body: web::Json<ImportBody>,
+) -> HttpResponse {
+    let service = path.into_inner();
+    let Some(arr) = client(&state, &service) else {
+        return not_configured(&service);
+    };
+    let payload = json!({
+        "name": "ManualImport",
+        "importMode": body.import_mode.clone().unwrap_or_else(|| "move".to_string()),
+        "files": body.files,
+    });
+    match arr.post::<Value, Value>("command", &payload).await {
+        Ok(v) => HttpResponse::Ok().json(v),
+        Err(e) => arr_error(e),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct EpisodesQuery {
+    pub series_id: i64,
+}
+
+/// `GET /api/media/sonarr/episodes?series_id=N` — episodes of a series, so a
+/// download can be linked to a specific episode.
+pub async fn sonarr_episodes(
+    state: web::Data<AppState>,
+    _user: AuthUser,
+    query: web::Query<EpisodesQuery>,
+) -> HttpResponse {
+    let Some(arr) = state.sonarr.as_ref() else {
+        return not_configured("sonarr");
+    };
+    let series_id = query.series_id.to_string();
+    match arr
+        .get_q::<Value>("episode", &[("seriesId", series_id.as_str())])
+        .await
+    {
+        Ok(v) => HttpResponse::Ok().json(json!({ "episodes": v })),
         Err(e) => arr_error(e),
     }
 }

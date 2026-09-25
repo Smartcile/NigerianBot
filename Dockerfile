@@ -45,12 +45,16 @@ COPY migrations ./migrations
 RUN cargo build --release -p app
 
 # ─── Runtime stage ─────────────────────────────────────────────────────────
+# ca-certificates (TLS) + ffmpeg/yt-dlp (media) + libopus0 (voice) + Deno (yt-dlp
+# uses a JS runtime for reliable YouTube extraction).
 FROM debian:bookworm-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates ffmpeg libopus0 curl \
+    && apt-get install -y --no-install-recommends ca-certificates ffmpeg libopus0 curl unzip \
     && curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux \
         -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp \
+    && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
+    && /usr/local/bin/deno --version \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/nigerianbot /usr/local/bin/nigerianbot

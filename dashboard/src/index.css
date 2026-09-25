@@ -281,6 +281,21 @@ main { max-width: 1200px; margin: 0 auto; padding: 20px; }
 .bar { flex: 1; height: 12px; background: #e9e2c4; border: 1px solid var(--gold-dark); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--green), var(--gold)); }
 .bar-row .n { width: 40px; text-align: right; color: var(--gold-deep); font-weight: bold; font-size: 13px; }
+.dlbar {
+  height: 8px;
+  background: #e9e2c4;
+  border: 1px solid var(--gold-dark);
+  margin-top: 6px;
+  max-width: 260px;
+  overflow: hidden;
+}
+.dlbar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), var(--gold));
+  transition: width 0.4s ease;
+}
+.pct { color: var(--gold-deep); font-weight: bold; font-size: 12px; }
 
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e0d8b8; vertical-align: top; }
@@ -311,7 +326,7 @@ button.link:hover { filter: none; color: var(--red); }
 .pill.failed { background: #ffd7d9; color: var(--red); }
 
 /* ── Forms ──────────────────────────────────────────────────────────────── */
-.dlform { display: flex; gap: 10px; }
+.dlform { display: flex; gap: 10px; flex-wrap: wrap; }
 .dlform input { margin-bottom: 0; }
 .dlform button { white-space: nowrap; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: end; }
@@ -396,6 +411,43 @@ ol.steps li { margin-bottom: 4px; }
   border-radius: 12px;
   font-weight: bold;
 }
+.chip { cursor: pointer; }
+.chip-on { background: var(--gold); color: #241a00; }
+
+/* ── Import modal ───────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 200;
+  padding: 20px;
+}
+.modal {
+  background: var(--paper);
+  color: var(--ink);
+  border: 6px double var(--gold);
+  outline: 3px solid var(--green);
+  max-width: 560px;
+  width: 100%;
+  max-height: 85vh;
+  overflow: auto;
+  padding: 18px;
+  box-shadow: 10px 10px 0 rgba(0, 0, 0, 0.55);
+}
+.modal-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.modal-head h2 { margin: 0; font-size: 15px; color: var(--green); }
+.modal .close {
+  background: var(--red);
+  color: #fff;
+  border: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+.modal hr { border: 0; border-top: 2px dashed var(--gold-dark); margin: 14px 0; }
+.modal > button:not(.close) { width: 100%; }
 
 /* ── Footers ────────────────────────────────────────────────────────────── */
 .updated { color: var(--gold); text-align: center; font-size: 12px; letter-spacing: 1px; margin-bottom: 8px; }

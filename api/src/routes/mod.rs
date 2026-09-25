@@ -53,6 +53,18 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                     web::get().to(handlers::media::search),
                 )
                 .route("/media/{service}/add", web::post().to(handlers::media::add))
+                .route(
+                    "/media/{service}/manual-import",
+                    web::get().to(handlers::media::manual_import),
+                )
+                .route(
+                    "/media/{service}/manual-import",
+                    web::post().to(handlers::media::manual_import_confirm),
+                )
+                .route(
+                    "/media/sonarr/episodes",
+                    web::get().to(handlers::media::sonarr_episodes),
+                )
                 // --- Schedules ---
                 .route("/schedules", web::get().to(handlers::schedules::list))
                 .route("/schedules", web::post().to(handlers::schedules::create))

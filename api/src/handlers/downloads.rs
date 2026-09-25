@@ -16,6 +16,8 @@ pub struct DownloadRow {
     pub provider: String,
     pub title: Option<String>,
     pub status: String,
+    pub progress: i32,
+    pub save_as: Option<String>,
     pub file_path: Option<String>,
     pub size_bytes: Option<i64>,
     pub error: Option<String>,
@@ -29,8 +31,8 @@ pub struct ListQuery {
     pub limit: Option<i64>,
 }
 
-const COLUMNS: &str = "id, url, provider, title, status, file_path, size_bytes, error, \
-                       requested_by, created_at, updated_at";
+const COLUMNS: &str = "id, url, provider, title, status, progress, save_as, file_path, \
+                       size_bytes, error, requested_by, created_at, updated_at";
 
 /// `GET /api/downloads?limit=N` — recent download jobs, newest first.
 pub async fn list(
@@ -58,6 +60,9 @@ pub async fn list(
 #[derive(Deserialize)]
 pub struct CreateDownload {
     pub url: String,
+    /// Optional filename to save as (so Sonarr/Radarr can parse it).
+    #[serde(default)]
+    pub save_as: Option<String>,
 }
 
 /// `POST /api/downloads` — queue a URL for download.
@@ -73,12 +78,18 @@ pub async fn create(
     }
 
     let provider = common::media::provider_of(url);
+    let save_as = body
+        .save_as
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
     let row = sqlx::query_as::<_, DownloadRow>(&format!(
-        "INSERT INTO downloads (url, provider, requested_by) VALUES ($1, $2, 'web') \
+        "INSERT INTO downloads (url, provider, requested_by, save_as) VALUES ($1, $2, 'web', $3) \
          RETURNING {COLUMNS}"
     ))
     .bind(url)
     .bind(provider)
+    .bind(save_as)
     .fetch_one(&state.db)
     .await;
 

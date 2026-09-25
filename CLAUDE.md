@@ -188,6 +188,14 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   still can't be `cargo check`ed on Windows (songbird/libopus); verify bot changes
   in Docker (see Phase 6 note).
 
+- **Downloads extras (DONE):** live progress (worker streams yt-dlp `%` into
+  `downloads.progress`; GUI bar), GUI cookie upload (fixes Vimeo/login-gated),
+  a per-download "Save as" filename, and a **Sonarr/Radarr import** flow
+  (`/api/media/{service}/manual-import` + `/media/sonarr/episodes`) that links a
+  finished file to an existing series/episode/movie via Manual Import. Shared
+  folder wiring: `DOWNLOADS_HOST_PATH` (bind mount) + `SONARR_IMPORT_PATH` /
+  `RADARR_IMPORT_PATH`. Image ships **Deno** for YouTube. Migrations 0008/0009.
+
 - **All-in-one consolidation (DONE, revised):** the separate services were merged
   into one process. `app/src/main.rs` runs `bot::run()`, `api::run()`,
   `worker::run()`, and `telegram::run()` via `tokio::try_join!`; each crate is now

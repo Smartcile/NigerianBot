@@ -32,6 +32,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                     web::delete().to(handlers::downloads::delete_cookies),
                 )
                 .route(
+                    "/downloads/bulk",
+                    web::post().to(handlers::downloads::bulk_import),
+                )
+                .route(
                     "/downloads/{id}",
                     web::delete().to(handlers::downloads::delete),
                 )

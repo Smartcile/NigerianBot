@@ -171,6 +171,18 @@ input, select {
   margin-bottom: 10px;
 }
 select { cursor: pointer; }
+textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 4px;
+  border: 2px solid var(--gold-dark);
+  background: #fffdf2;
+  color: var(--ink);
+  font-size: 14px;
+  font-family: inherit;
+  margin-bottom: 10px;
+  resize: vertical;
+}
 
 button {
   padding: 11px 14px;

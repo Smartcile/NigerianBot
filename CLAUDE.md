@@ -195,6 +195,8 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   finished file to an existing series/episode/movie via Manual Import. Shared
   folder wiring: `DOWNLOADS_HOST_PATH` (bind mount) + `SONARR_IMPORT_PATH` /
   `RADARR_IMPORT_PATH`. Image ships **Deno** for YouTube. Migrations 0008/0009.
+  **Bulk import** (`POST /api/downloads/bulk` + GUI textarea) expands a
+  series/playlist URL via `yt-dlp --flat-playlist -J` into episode rows.
 
 - **All-in-one consolidation (DONE, revised):** the separate services were merged
   into one process. `app/src/main.rs` runs `bot::run()`, `api::run()`,

@@ -425,6 +425,9 @@ function Downloads({ api }) {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState('')
   const [importFile, setImportFile] = useState(null)
+  const [bulk, setBulk] = useState('')
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkMsg, setBulkMsg] = useState('')
 
   const refresh = useCallback(async () => {
     try {
@@ -466,6 +469,22 @@ function Downloads({ api }) {
     await refresh()
   }
 
+  async function submitBulk(e) {
+    e.preventDefault()
+    if (!bulk.trim()) return
+    setBulkBusy(true)
+    setBulkMsg('')
+    try {
+      const r = await api.post('/api/downloads/bulk', { urls: bulk })
+      setBulkMsg(`ADDED ${r?.added ?? 0}, SKIPPED ${r?.skipped ?? 0}.`)
+      setBulk('')
+      await refresh()
+    } catch {
+      setBulkMsg('BULK IMPORT FAILED.')
+    }
+    setBulkBusy(false)
+  }
+
   return (
     <>
       <section className="section highlight">
@@ -490,6 +509,28 @@ function Downloads({ api }) {
         <div className="fineprint">
           A trusted agent (the worker) will collect the cargo and store it in the warehouse.
           {note ? <b> {note}</b> : null}
+        </div>
+      </section>
+
+      <section className="section highlight">
+        <h2>📦 BULK IMPORT (SERIES LINK OR MANY URLS)</h2>
+        <form onSubmit={submitBulk}>
+          <textarea
+            rows={4}
+            placeholder={
+              'Paste a Tubi/YouTube series link, or many URLs (one per line).\nhttps://tubitv.com/series/300007017/police-ten-7'
+            }
+            value={bulk}
+            onChange={(e) => setBulk(e.target.value)}
+          />
+          <button type="submit" disabled={bulkBusy}>
+            {bulkBusy ? 'EXPANDING…' : '📥 EXPAND & QUEUE ALL'}
+          </button>
+        </form>
+        <div className="fineprint">
+          Series/playlist links are expanded into individual episodes and queued; duplicates are
+          skipped.
+          {bulkMsg ? <b> {bulkMsg}</b> : null}
         </div>
       </section>
 

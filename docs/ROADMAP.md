@@ -45,6 +45,9 @@ Save a URL's video to server storage; link it from Discord/Telegram/web.
   or movie, letting the *arr app rename/move it per its naming settings.
 - ✅ **YouTube / Tubi** — any yt-dlp URL works; the image ships **Deno** for
   reliable YouTube extraction (Tubi may need cookies / a US session).
+- ✅ **Bulk import** — paste a series/playlist link (or many URLs) and it expands
+  to individual episodes and queues them all (dedup), from the GUI or
+  `POST /api/downloads/bulk`.
 - ⬜ **Playlists / channels**, per-item rows, and download history/retention.
 
 ## Track 2 — Telegram surface

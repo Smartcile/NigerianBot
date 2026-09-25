@@ -3,7 +3,7 @@
 
 use actix_web::{web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use tracing::error;
 
 use crate::auth::AuthUser;
@@ -199,4 +199,162 @@ pub async fn delete_cookies(state: web::Data<AppState>, _user: AuthUser) -> impl
             HttpResponse::InternalServerError().json(json!({ "error": "io_error" }))
         }
     }
+}
+
+// ── Bulk import (paste many URLs, or a series/playlist link) ────────────────
+
+#[derive(Deserialize)]
+pub struct BulkImport {
+    /// One or more URLs, separated by whitespace/newlines.
+    pub urls: String,
+}
+
+struct Episode {
+    url: String,
+    title: String,
+}
+
+/// `POST /api/downloads/bulk` — expand any playlist/series URL into episodes and
+/// queue them all (skipping duplicates).
+pub async fn bulk_import(
+    state: web::Data<AppState>,
+    _user: AuthUser,
+    body: web::Json<BulkImport>,
+) -> impl Responder {
+    let urls: Vec<String> = body
+        .urls
+        .split_whitespace()
+        .map(str::to_string)
+        .filter(|u| u.starts_with("http://") || u.starts_with("https://"))
+        .collect();
+    if urls.is_empty() {
+        return HttpResponse::BadRequest()
+            .json(json!({ "error": "no_urls", "message": "Paste at least one http(s) URL." }));
+    }
+
+    let mut added = 0i64;
+    let mut skipped = 0i64;
+    let mut items: Vec<DownloadRow> = Vec::new();
+
+    for url in urls {
+        let episodes = expand_playlist(&state, &url).await;
+        let targets: Vec<(String, Option<String>)> = if episodes.is_empty() {
+            vec![(url.clone(), None)]
+        } else {
+            episodes
+                .into_iter()
+                .enumerate()
+                .map(|(i, e)| {
+                    (
+                        e.url,
+                        Some(format!("{:02} - {}", i + 1, sanitize_title(&e.title))),
+                    )
+                })
+                .collect()
+        };
+
+        for (ep_url, save_as) in targets {
+            let exists: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM downloads WHERE url = $1 AND status <> 'failed'",
+            )
+            .bind(&ep_url)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
+            if exists > 0 {
+                skipped += 1;
+                continue;
+            }
+
+            let provider = common::media::provider_of(&ep_url);
+            let row = sqlx::query_as::<_, DownloadRow>(&format!(
+                "INSERT INTO downloads (url, provider, requested_by, save_as) \
+                 VALUES ($1, $2, 'bulk', $3) RETURNING {COLUMNS}"
+            ))
+            .bind(&ep_url)
+            .bind(provider)
+            .bind(&save_as)
+            .fetch_one(&state.db)
+            .await;
+
+            match row {
+                Ok(row) => {
+                    added += 1;
+                    items.push(row);
+                }
+                Err(e) => {
+                    error!(?e, "failed to queue bulk download");
+                    skipped += 1;
+                }
+            }
+        }
+    }
+
+    HttpResponse::Ok().json(json!({ "added": added, "skipped": skipped, "items": items }))
+}
+
+/// Use yt-dlp to list a series/playlist's episodes. Empty if it's a single video.
+async fn expand_playlist(state: &AppState, url: &str) -> Vec<Episode> {
+    let mut cmd = tokio::process::Command::new("yt-dlp");
+    cmd.args(["--flat-playlist", "--no-warnings", "-J"]);
+    if std::path::Path::new(&state.config.cookies_path).is_file() {
+        cmd.arg("--cookies").arg(&state.config.cookies_path);
+    }
+
+    let output =
+        match tokio::time::timeout(std::time::Duration::from_secs(45), cmd.arg(url).output()).await
+        {
+            Ok(Ok(o)) if o.status.success() => o,
+            _ => return Vec::new(),
+        };
+
+    let data: Value = match serde_json::from_slice(&output.stdout) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    let Some(entries) = data.get("entries").and_then(|e| e.as_array()) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    for e in entries {
+        let resolved = e
+            .get("url")
+            .and_then(|u| u.as_str())
+            .filter(|u| u.starts_with("http"))
+            .or_else(|| e.get("webpage_url").and_then(|u| u.as_str()))
+            .map(str::to_string)
+            .or_else(|| {
+                // Reconstruct from a known provider + id as a fallback.
+                let key = e.get("ie_key").and_then(|k| k.as_str()).unwrap_or("");
+                let id = e.get("id").and_then(|i| i.as_str())?;
+                if key == "Youtube" {
+                    Some(format!("https://www.youtube.com/watch?v={id}"))
+                } else if key.starts_with("Tubi") {
+                    Some(format!("https://tubitv.com/video/{id}"))
+                } else {
+                    None
+                }
+            });
+        if let Some(url) = resolved {
+            let title = e
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("episode")
+                .to_string();
+            out.push(Episode { url, title });
+        }
+    }
+    out
+}
+
+fn sanitize_title(title: &str) -> String {
+    title
+        .replace(['/', '\\'], "_")
+        .replace("..", "_")
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .trim()
+        .to_string()
 }

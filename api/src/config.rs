@@ -12,10 +12,14 @@ pub struct ApiConfig {
     /// Shared secret clients present to `/api/auth/login` to obtain a JWT.
     /// Empty means login is disabled (the server logs a warning at startup).
     pub api_key: String,
+    /// PIN seeded on first run (must be changed on first sign-in). Default `1234`.
+    pub default_pin: String,
     /// Lifetime of issued tokens, in seconds.
     pub token_ttl_secs: i64,
     /// Directory of finished downloads, served read-only at `/media`.
     pub downloads_path: String,
+    /// Path where the GUI-uploaded yt-dlp cookies file is stored.
+    pub cookies_path: String,
     /// Sonarr (TV) base URL + API key, when configured.
     pub sonarr_url: Option<String>,
     pub sonarr_api_key: Option<String>,
@@ -46,8 +50,10 @@ impl ApiConfig {
             database_url: common::config::optional("DATABASE_URL"),
             jwt_secret: common::config::optional_or("JWT_SECRET", "dev-insecure-change-me"),
             api_key: common::config::optional_or("API_KEY", ""),
+            default_pin: common::config::optional_or("DASHBOARD_PIN", "1234"),
             token_ttl_secs,
             downloads_path: common::config::optional_or("DOWNLOADS_PATH", "/downloads"),
+            cookies_path: common::config::optional_or("YTDLP_COOKIES_FILE", "/cookies/cookies.txt"),
             sonarr_url: common::config::optional("SONARR_URL"),
             sonarr_api_key: common::config::optional("SONARR_API_KEY"),
             radarr_url: common::config::optional("RADARR_URL"),

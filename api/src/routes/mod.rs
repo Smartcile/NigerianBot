@@ -12,11 +12,25 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 // --- Authentication ---
                 .route("/auth/login", web::post().to(handlers::login))
                 .route("/auth/refresh", web::post().to(handlers::refresh))
+                .route("/auth/change-pin", web::post().to(handlers::change_pin))
                 // --- Dashboard ---
                 .route("/stats", web::get().to(handlers::stats))
                 // --- Downloads ---
                 .route("/downloads", web::get().to(handlers::downloads::list))
                 .route("/downloads", web::post().to(handlers::downloads::create))
+                // Registered before `/{id}` so "cookies" isn't read as an id.
+                .route(
+                    "/downloads/cookies",
+                    web::get().to(handlers::downloads::cookies_status),
+                )
+                .route(
+                    "/downloads/cookies",
+                    web::post().to(handlers::downloads::upload_cookies),
+                )
+                .route(
+                    "/downloads/cookies",
+                    web::delete().to(handlers::downloads::delete_cookies),
+                )
                 .route(
                     "/downloads/{id}",
                     web::delete().to(handlers::downloads::delete),

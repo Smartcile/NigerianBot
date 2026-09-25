@@ -116,3 +116,76 @@ pub async fn delete(
         }
     }
 }
+
+// ── yt-dlp cookies (for login-gated sites, e.g. Vimeo) ──────────────────────
+
+/// `GET /api/downloads/cookies` — whether a cookies file is stored.
+pub async fn cookies_status(state: web::Data<AppState>, _user: AuthUser) -> impl Responder {
+    match std::fs::metadata(&state.config.cookies_path) {
+        Ok(m) => {
+            let modified = m
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            HttpResponse::Ok().json(json!({
+                "present": true,
+                "size": m.len(),
+                "modified": modified,
+            }))
+        }
+        Err(_) => HttpResponse::Ok().json(json!({ "present": false })),
+    }
+}
+
+/// `POST /api/downloads/cookies` — store an uploaded Netscape `cookies.txt`.
+pub async fn upload_cookies(
+    state: web::Data<AppState>,
+    _user: AuthUser,
+    body: web::Bytes,
+) -> impl Responder {
+    if body.is_empty() {
+        return HttpResponse::BadRequest().json(json!({ "error": "empty" }));
+    }
+    if body.len() > 2 * 1024 * 1024 {
+        return HttpResponse::PayloadTooLarge()
+            .json(json!({ "error": "too_large", "message": "Max 2 MB." }));
+    }
+    // Light validation: Netscape cookie files are tab-separated.
+    let text = String::from_utf8_lossy(&body);
+    if !text.contains("Netscape") && !text.contains('\t') {
+        return HttpResponse::BadRequest().json(json!({
+            "error": "not_cookies",
+            "message": "That doesn't look like a Netscape cookies.txt file.",
+        }));
+    }
+
+    let path = std::path::Path::new(&state.config.cookies_path);
+    if let Some(parent) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            error!(?e, "failed to create cookies directory");
+            return HttpResponse::InternalServerError().json(json!({ "error": "io_error" }));
+        }
+    }
+
+    match std::fs::write(path, &body) {
+        Ok(_) => HttpResponse::Ok().json(json!({ "present": true, "size": body.len() })),
+        Err(e) => {
+            error!(?e, "failed to write cookies file");
+            HttpResponse::InternalServerError().json(json!({ "error": "io_error" }))
+        }
+    }
+}
+
+/// `DELETE /api/downloads/cookies` — remove the stored cookies.
+pub async fn delete_cookies(state: web::Data<AppState>, _user: AuthUser) -> impl Responder {
+    match std::fs::remove_file(&state.config.cookies_path) {
+        Ok(_) => HttpResponse::NoContent().finish(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => HttpResponse::NoContent().finish(),
+        Err(e) => {
+            error!(?e, "failed to remove cookies file");
+            HttpResponse::InternalServerError().json(json!({ "error": "io_error" }))
+        }
+    }
+}

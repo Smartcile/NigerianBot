@@ -1,21 +1,33 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 
 const TOKEN_KEY = 'nb_token'
+const CHANGE_KEY = 'nb_must_change'
 
 export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY))
+  const [mustChange, setMustChange] = useState(() => localStorage.getItem(CHANGE_KEY) === '1')
 
-  const login = useCallback((t) => {
+  const login = useCallback((t, mustChangePin) => {
     localStorage.setItem(TOKEN_KEY, t)
+    localStorage.setItem(CHANGE_KEY, mustChangePin ? '1' : '0')
     setToken(t)
+    setMustChange(!!mustChangePin)
   }, [])
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(CHANGE_KEY)
     setToken(null)
   }, [])
 
-  return token ? <Shell token={token} onLogout={logout} /> : <Login onLogin={login} />
+  const pinChanged = useCallback(() => {
+    localStorage.setItem(CHANGE_KEY, '0')
+    setMustChange(false)
+  }, [])
+
+  if (!token) return <Login onLogin={login} />
+  if (mustChange) return <ForceChangePin token={token} onDone={pinChanged} onLogout={logout} />
+  return <Shell token={token} onLogout={logout} />
 }
 
 /* ── API helper ──────────────────────────────────────────────────────────── */
@@ -45,6 +57,17 @@ function makeApi(token, onLogout) {
         ),
       )
     },
+    async postText(path, text) {
+      return json(
+        check(
+          await fetch(path, {
+            method: 'POST',
+            headers: { ...auth, 'Content-Type': 'text/plain' },
+            body: text,
+          }),
+        ),
+      )
+    },
     async del(path) {
       check(await fetch(path, { method: 'DELETE', headers: auth }))
     },
@@ -54,7 +77,7 @@ function makeApi(token, onLogout) {
 /* ── Login ───────────────────────────────────────────────────────────────── */
 
 function Login({ onLogin }) {
-  const [key, setKey] = useState('')
+  const [pin, setPin] = useState('')
   const [err, setErr] = useState('')
 
   async function submit(e) {
@@ -64,14 +87,18 @@ function Login({ onLogin }) {
       const r = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_key: key }),
+        body: JSON.stringify({ pin }),
       })
+      if (r.status === 401) {
+        setErr('WRONG PIN. THIS TRANSACTION IS HIGHLY CONFIDENTIAL.')
+        return
+      }
       if (!r.ok) {
-        setErr('INVALID ACCESS CODE — THIS TRANSACTION IS HIGHLY CONFIDENTIAL.')
+        setErr('SIGN-IN FAILED. PLEASE TRY AGAIN.')
         return
       }
       const data = await r.json()
-      onLogin(data.token)
+      onLogin(data.token, data.must_change_pin)
     } catch {
       setErr('SERVER UNREACHABLE. PLEASE TRY AGAIN.')
     }
@@ -92,18 +119,111 @@ function Login({ onLogin }) {
           I am the system administrator of a late <b>Honourable Controller</b> and I have the
           privilege to move the sum of <b>US$45,000,000.00</b> (FOURTY FIVE MILLION UNITED STATES
           DOLLARS) into your trust account. To proceed, kindly furnish the undermentioned secret
-          access code.
+          PIN.
         </p>
         <input
           type="password"
-          placeholder="ENTER SECRET API CODE E.G. YOUR API_KEY"
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
+          inputMode="numeric"
+          maxLength={8}
+          placeholder="ENTER YOUR PIN (DEFAULT: 1234)"
+          value={pin}
+          onChange={(e) => setPin(e.target.value)}
         />
         <button type="submit">🤑 CLAIM ACCESS NOW!!!</button>
         <div className="err">{err}</div>
         <div className="fineprint">
-          This message is intended only for the addressee. Please keep it secret from all persons.
+          First time? Use PIN <b>1234</b>; you'll be asked to choose a new one.
+        </div>
+      </form>
+    </div>
+  )
+}
+
+/* Forced PIN change on first sign-in. */
+function ForceChangePin({ token, onDone, onLogout }) {
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(e) {
+    e.preventDefault()
+    setErr('')
+    if (next !== confirm) {
+      setErr('THE TWO PINS DO NOT MATCH.')
+      return
+    }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/auth/change-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ current_pin: current, new_pin: next }),
+      })
+      if (r.status === 401) {
+        setErr('CURRENT PIN IS WRONG.')
+        setBusy(false)
+        return
+      }
+      if (!r.ok) {
+        setErr('PIN MUST BE 4-8 DIGITS.')
+        setBusy(false)
+        return
+      }
+      onDone()
+    } catch {
+      setErr('COULD NOT REACH THE SERVER.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="login">
+      <div className="popup-note">🔐 SECURITY NOTICE</div>
+      <form className="card" onSubmit={submit}>
+        <div className="seal-wrap">
+          <Seal />
+        </div>
+        <h1>🇳🇬 CHANGE YOUR SECRET PIN</h1>
+        <p className="scam-sub">FIRST SIGN-IN — PROTECT YOUR US$45,000,000.00</p>
+        <p className="letter">
+          For your own protection, kindly replace the default PIN (<b>1234</b>) with a secret
+          4-8 digit code that only you know. Do not disclose it to any person, including the
+          Controller.
+        </p>
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={8}
+          placeholder="CURRENT PIN (1234)"
+          value={current}
+          onChange={(e) => setCurrent(e.target.value)}
+        />
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={8}
+          placeholder="NEW PIN (4-8 DIGITS)"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+        />
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={8}
+          placeholder="CONFIRM NEW PIN"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+        />
+        <button type="submit" disabled={busy}>
+          {busy ? 'SAVING…' : '🔐 SAVE NEW PIN'}
+        </button>
+        <div className="err">{err}</div>
+        <div className="fineprint">
+          <span className="linklike" onClick={onLogout}>
+            Sign out instead
+          </span>
         </div>
       </form>
     </div>
@@ -361,6 +481,8 @@ function Downloads({ api }) {
         </div>
       </section>
 
+      <CookiesCard api={api} />
+
       <section className="section">
         <h2>🚢 CARGO MANIFEST</h2>
         <table>
@@ -415,6 +537,84 @@ function Downloads({ api }) {
         </table>
       </section>
     </>
+  )
+}
+
+/* Login cookies for yt-dlp (Vimeo etc.). Uploaded here, not on the server. */
+function CookiesCard({ api }) {
+  const [status, setStatus] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const fileRef = useRef(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      setStatus(await api.get('/api/downloads/cookies'))
+    } catch {
+      /* handled */
+    }
+  }, [api])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  async function upload(e) {
+    e.preventDefault()
+    const file = fileRef.current?.files?.[0]
+    if (!file) {
+      setMsg('CHOOSE A cookies.txt FILE FIRST.')
+      return
+    }
+    setBusy(true)
+    setMsg('')
+    try {
+      const text = await file.text()
+      await api.postText('/api/downloads/cookies', text)
+      setMsg('COOKIES STORED. LOGIN-GATED DOWNLOADS SHOULD NOW WORK.')
+      if (fileRef.current) fileRef.current.value = ''
+      await refresh()
+    } catch {
+      setMsg('UPLOAD FAILED — IS IT A NETSCAPE cookies.txt?')
+    }
+    setBusy(false)
+  }
+
+  async function remove() {
+    await api.del('/api/downloads/cookies')
+    setMsg('COOKIES REMOVED.')
+    await refresh()
+  }
+
+  return (
+    <section className="section">
+      <h2>🍪 LOGIN COOKIES (VIMEO / PRIVATE SITES)</h2>
+      <p className="fineprint">
+        Some videos (e.g. Vimeo) only download with a logged-in session. Export your cookies as
+        a Netscape-format <code>cookies.txt</code> (a browser extension like “Get cookies.txt
+        LOCALLY” does this), then upload it here. No server access needed.
+      </p>
+      <form className="dlform" onSubmit={upload}>
+        <input ref={fileRef} type="file" accept=".txt,text/plain" />
+        <button type="submit" disabled={busy}>
+          {busy ? 'UPLOADING…' : '📤 UPLOAD COOKIES'}
+        </button>
+      </form>
+      <div className="fineprint">
+        STATUS:{' '}
+        {status?.present ? (
+          <span className="pill done">STORED · {fmtSize(status.size)}</span>
+        ) : (
+          <span className="pill failed">NONE</span>
+        )}{' '}
+        {status?.present ? (
+          <button className="link danger" onClick={remove}>
+            REMOVE
+          </button>
+        ) : null}
+      </div>
+      {msg ? <div className="notice">{msg}</div> : null}
+    </section>
   )
 }
 
@@ -968,17 +1168,19 @@ const SETUP = [
     key: 'api',
     icon: '🖥️',
     title: 'DASHBOARD / API',
-    blurb: 'This control panel and its REST API. Log in with your API key to get a JWT.',
+    blurb:
+      'This control panel and its REST API. Sign in with a PIN (default 1234, changed on first login).',
     env: [
-      ['API_KEY', 'Secret you type into the login screen.'],
+      ['DASHBOARD_PIN', 'PIN seeded on first run (default 1234); changed in the UI.'],
+      ['API_KEY', 'Optional. Alternative credential for scripts/clients.'],
       ['JWT_SECRET', 'Signs dashboard tokens — long & random.'],
       ['API_PORT', 'Host/container port (default 8000).'],
       ['PUBLIC_BASE_URL', 'Optional public URL, used in notification links.'],
     ],
     steps: [
-      'Set API_KEY and JWT_SECRET in the stack.',
-      'Open http://<server>:8000/ and sign in with API_KEY.',
-      'Put HTTPS in front (NPM/Caddy/Traefik) if exposing publicly.',
+      'Set JWT_SECRET in the stack (DASHBOARD_PIN optional).',
+      'Open http://<server>:8000/ and sign in with PIN 1234.',
+      'Choose a new PIN when prompted; change it anytime below.',
     ],
     usage: ['Every tab in this dashboard', 'REST: GET /api/*, POST /api/*'],
   },
@@ -1057,11 +1259,13 @@ const SETUP = [
     env: [
       ['DOWNLOADS_PATH', 'Container path for finished files (served at /media).'],
       ['DISCORD_NOTIFY_WEBHOOK', 'Optional Discord webhook for "done" pings.'],
+      ['YTDLP_COOKIES_FILE', 'Stored cookies path (advanced; default /cookies/cookies.txt).'],
     ],
     steps: [
-      'The stack creates the "downloads" volume and mounts it into the worker.',
-      'Nothing else to do — queue a URL from the Downloads tab.',
-      'Files are downloadable at /media/<file> once complete.',
+      'The stack creates the "downloads" and "cookies" volumes.',
+      'Queue a URL from the Downloads tab (CARGO).',
+      'For Vimeo/login-gated videos, upload cookies.txt in the Downloads tab.',
+      'Finished files are downloadable at /media/<file>.',
     ],
     usage: ['Downloads tab', 'Discord /download <url>', 'Telegram /download <url>'],
   },
@@ -1106,7 +1310,9 @@ function statusFor(key, st) {
     case 'database':
       return st.database ? { ok: true, text: 'CONNECTED' } : { ok: false, text: 'DOWN' }
     case 'api':
-      return { ok: true, text: 'ONLINE' }
+      return st.pin_default
+        ? { ok: false, text: 'DEFAULT PIN!' }
+        : { ok: true, text: 'ONLINE' }
     case 'discord':
       return st.bot?.configured
         ? { ok: true, text: `ACTIVE · ${st.bot.commands} CMD` }
@@ -1222,8 +1428,80 @@ function Setup({ api }) {
         })}
       </div>
 
+      <ChangePinCard api={api} />
+
       <div className="updated">STATUS SYNCED {updated}</div>
     </>
+  )
+}
+
+function ChangePinCard({ api }) {
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function submit(e) {
+    e.preventDefault()
+    setMsg('')
+    if (next !== confirm) {
+      setMsg('THE TWO PINS DO NOT MATCH.')
+      return
+    }
+    setBusy(true)
+    try {
+      await api.post('/api/auth/change-pin', { current_pin: current, new_pin: next })
+      setMsg('PIN UPDATED. KEEP IT SECRET, MY FRIEND.')
+      setCurrent('')
+      setNext('')
+      setConfirm('')
+    } catch {
+      setMsg('CURRENT PIN WRONG, OR NEW PIN NOT 4-8 DIGITS.')
+    }
+    setBusy(false)
+  }
+
+  return (
+    <section className="section highlight">
+      <h2>🔐 CHANGE DASHBOARD PIN</h2>
+      <form className="form-grid" onSubmit={submit}>
+        <label>
+          CURRENT PIN
+          <input
+            type="password"
+            inputMode="numeric"
+            maxLength={8}
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+          />
+        </label>
+        <label>
+          NEW PIN (4-8 DIGITS)
+          <input
+            type="password"
+            inputMode="numeric"
+            maxLength={8}
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+          />
+        </label>
+        <label>
+          CONFIRM NEW PIN
+          <input
+            type="password"
+            inputMode="numeric"
+            maxLength={8}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+        </label>
+        <button type="submit" disabled={busy}>
+          {busy ? 'SAVING…' : 'SAVE NEW PIN'}
+        </button>
+      </form>
+      {msg ? <div className="notice">{msg}</div> : null}
+    </section>
   )
 }
 

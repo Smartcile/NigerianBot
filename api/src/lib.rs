@@ -39,7 +39,7 @@ pub async fn run() -> anyhow::Result<()> {
     let bind = (config.host.clone(), config.port);
 
     if config.api_key.is_empty() {
-        warn!("API_KEY is not set — /api/auth/login will reject all logins");
+        warn!("API_KEY is not set — API-key login is disabled (PIN login still works)");
     }
 
     let url = config
@@ -53,6 +53,11 @@ pub async fn run() -> anyhow::Result<()> {
         .await
         .context("failed to run database migrations")?;
     info!("database connected and migrations applied");
+
+    // Seed the dashboard PIN on first run (must be changed on first sign-in).
+    auth::ensure_pin_initialized(&db, &config.default_pin)
+        .await
+        .context("failed to initialize the dashboard PIN")?;
 
     let http = reqwest::Client::new();
     let sonarr = match (config.sonarr_url.clone(), config.sonarr_api_key.clone()) {

@@ -38,7 +38,10 @@ pub async fn not_implemented() -> impl Responder {
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
-    pub api_key: String,
+    /// Dashboard PIN.
+    pub pin: Option<String>,
+    /// Optional API key (for scripts/clients).
+    pub api_key: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -46,32 +49,104 @@ pub struct TokenResponse {
     pub token: String,
     pub token_type: &'static str,
     pub expires_in: i64,
+    /// True when the PIN is still the default and must be changed.
+    pub must_change_pin: bool,
 }
 
-/// `POST /api/auth/login` — exchange the shared API key for a JWT.
-pub async fn login(state: web::Data<AppState>, body: web::Json<LoginRequest>) -> impl Responder {
-    let cfg = &state.config;
-
-    if cfg.api_key.is_empty() {
-        return HttpResponse::ServiceUnavailable().json(json!({
-            "error": "auth_disabled",
-            "message": "API_KEY is not configured on the server.",
-        }));
-    }
-
-    if !constant_time_eq(body.api_key.as_bytes(), cfg.api_key.as_bytes()) {
-        return HttpResponse::Unauthorized().json(json!({ "error": "invalid_api_key" }));
-    }
-
-    match auth::issue_token(&cfg.jwt_secret, "api", "admin", cfg.token_ttl_secs) {
+fn token_response(
+    cfg: &crate::config::ApiConfig,
+    sub: &str,
+    must_change_pin: bool,
+) -> HttpResponse {
+    match auth::issue_token(&cfg.jwt_secret, sub, "admin", cfg.token_ttl_secs) {
         Ok(token) => HttpResponse::Ok().json(TokenResponse {
             token,
             token_type: "Bearer",
             expires_in: cfg.token_ttl_secs,
+            must_change_pin,
         }),
         Err(e) => {
             error!(?e, "failed to issue token");
             HttpResponse::InternalServerError().json(json!({ "error": "token_error" }))
+        }
+    }
+}
+
+/// `POST /api/auth/login` — sign in with the dashboard PIN (or the API key).
+pub async fn login(state: web::Data<AppState>, body: web::Json<LoginRequest>) -> impl Responder {
+    let cfg = &state.config;
+
+    // API-key path (optional; lets scripts/clients keep working).
+    if let Some(key) = body.api_key.as_deref() {
+        if !cfg.api_key.is_empty() && constant_time_eq(key.as_bytes(), cfg.api_key.as_bytes()) {
+            return token_response(cfg, "api", false);
+        }
+    }
+
+    // PIN path (the dashboard).
+    let Some(pin) = body.pin.as_deref() else {
+        return HttpResponse::BadRequest().json(json!({
+            "error": "pin_required",
+            "message": "Provide your PIN.",
+        }));
+    };
+
+    let hash = match auth::stored_pin_hash(&state.db).await {
+        Ok(Some(hash)) => hash,
+        Ok(None) => {
+            return HttpResponse::ServiceUnavailable().json(json!({
+                "error": "pin_uninitialized",
+                "message": "No PIN set yet.",
+            }))
+        }
+        Err(e) => {
+            error!(?e, "failed to read PIN");
+            return HttpResponse::InternalServerError().json(json!({ "error": "db_error" }));
+        }
+    };
+
+    if !auth::verify_pin(pin, &hash) {
+        return HttpResponse::Unauthorized().json(json!({ "error": "invalid_pin" }));
+    }
+
+    let must_change_pin = auth::pin_is_default(&state.db).await;
+    token_response(cfg, "dashboard", must_change_pin)
+}
+
+#[derive(Deserialize)]
+pub struct ChangePinRequest {
+    pub current_pin: String,
+    pub new_pin: String,
+}
+
+/// `POST /api/auth/change-pin` — set a new dashboard PIN.
+pub async fn change_pin(
+    state: web::Data<AppState>,
+    _user: AuthUser,
+    body: web::Json<ChangePinRequest>,
+) -> impl Responder {
+    let hash = match auth::stored_pin_hash(&state.db).await {
+        Ok(Some(hash)) => hash,
+        _ => {
+            return HttpResponse::ServiceUnavailable().json(json!({ "error": "pin_uninitialized" }))
+        }
+    };
+
+    if !auth::verify_pin(&body.current_pin, &hash) {
+        return HttpResponse::Unauthorized().json(json!({ "error": "invalid_pin" }));
+    }
+    if !auth::valid_pin(&body.new_pin) {
+        return HttpResponse::BadRequest().json(json!({
+            "error": "weak_pin",
+            "message": "PIN must be 4-8 digits.",
+        }));
+    }
+
+    match auth::set_pin(&state.db, &body.new_pin, false).await {
+        Ok(_) => HttpResponse::NoContent().finish(),
+        Err(e) => {
+            error!(?e, "failed to set PIN");
+            HttpResponse::InternalServerError().json(json!({ "error": "db_error" }))
         }
     }
 }
@@ -88,6 +163,7 @@ pub async fn refresh(state: web::Data<AppState>, user: AuthUser) -> impl Respond
             token,
             token_type: "Bearer",
             expires_in: state.config.token_ttl_secs,
+            must_change_pin: auth::pin_is_default(&state.db).await,
         }),
         Err(e) => {
             error!(?e, "failed to refresh token");

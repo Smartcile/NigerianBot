@@ -196,6 +196,11 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   `app`; the `tts` service was removed from the stack. Image:
   `ghcr.io/smartcile/nigerianbot:latest`.
 
+- **Dashboard PIN (DONE):** sign-in is a bcrypt-hashed PIN stored in `bot_settings`
+  (seed via `DASHBOARD_PIN`, default `1234`), with a forced change on first
+  login. `API_KEY` remains an optional credential for scripts/clients. Endpoints:
+  `POST /api/auth/login` (`{pin}`) and `POST /api/auth/change-pin`.
+
 ## Deploy / CI cheatsheet
 
 Push to `main` → `.github/workflows/build.yml` builds the single all-in-one image

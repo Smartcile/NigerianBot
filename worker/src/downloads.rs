@@ -64,25 +64,33 @@ pub async fn process_next(pool: &PgPool, config: &WorkerConfig) -> Result<bool> 
 
 /// Run yt-dlp for one URL. Returns `(title, relative_file_name, size_bytes)`.
 async fn run_ytdlp(config: &WorkerConfig, url: &str) -> Result<(String, String, i64)> {
-    let output = tokio::process::Command::new("yt-dlp")
-        .args([
-            "--no-playlist",
-            "--no-warnings",
-            "--newline",
-            "-f",
-            "bv*+ba/b",
-            "--merge-output-format",
-            "mp4",
-            "-P",
-            &config.downloads_path,
-            "-o",
-            "%(id)s.%(ext)s",
-            "--print",
-            "%(title)s",
-            "--print",
-            "after_move:filepath",
-            url,
-        ])
+    let mut cmd = tokio::process::Command::new("yt-dlp");
+    cmd.args([
+        "--no-playlist",
+        "--no-warnings",
+        "--newline",
+        "-f",
+        "bv*+ba/b",
+        "--merge-output-format",
+        "mp4",
+        "-P",
+        &config.downloads_path,
+        "-o",
+        "%(id)s.%(ext)s",
+        "--print",
+        "%(title)s",
+        "--print",
+        "after_move:filepath",
+    ]);
+
+    // Some sites (e.g. Vimeo) only serve the web client to a logged-in session;
+    // pass the stored cookies file when it exists (uploaded via the web GUI).
+    if std::path::Path::new(&config.cookies_file).is_file() {
+        cmd.arg("--cookies").arg(&config.cookies_file);
+    }
+
+    let output = cmd
+        .arg(url)
         .output()
         .await
         .context("failed to run yt-dlp (is it installed?)")?;

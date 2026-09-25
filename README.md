@@ -34,7 +34,8 @@ pipeline. Built to run 24/7 in Docker.
   start downloading.
 - 🗓️ **Scheduler** — `/schedule` reminders, recurring announcements, and
   Sonarr/Radarr download digests; auto-prunes old logs.
-- 📊 **React dashboard** — a full control panel behind your API key:
+- 📊 **React dashboard** — a full control panel behind a **PIN** (default `1234`,
+  changed on first login):
   Overview, **Downloads**, **Media** (Sonarr/Radarr search + request), **Schedules**,
   **Users/roles**, and **Telegram** — dressed in a parody "HONOURABLE BUSINESS"
   419 skin (cosmetic only; all actions are real). Served by the API — bring your

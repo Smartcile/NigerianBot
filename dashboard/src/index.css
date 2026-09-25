@@ -301,6 +301,7 @@ button.link {
 }
 button.link.danger { color: var(--red); }
 button.link:hover { filter: none; color: var(--red); }
+.linklike { color: var(--green); font-weight: bold; text-decoration: underline; cursor: pointer; }
 
 /* ── Pills ──────────────────────────────────────────────────────────────── */
 .pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 12px; font-weight: 900; white-space: nowrap; }

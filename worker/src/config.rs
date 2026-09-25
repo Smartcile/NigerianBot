@@ -10,6 +10,9 @@ pub struct WorkerConfig {
     pub poll_interval_secs: u64,
     /// Directory (inside the container) where finished downloads are written.
     pub downloads_path: String,
+    /// Netscape cookies file passed to yt-dlp (for sites needing login, e.g.
+    /// some Vimeo videos). Uploaded via the web GUI; path overridable by env.
+    pub cookies_file: String,
     /// Optional outbound notification targets (set either or both).
     pub discord_webhook: Option<String>,
     pub telegram_bot_token: Option<String>,
@@ -29,6 +32,7 @@ impl WorkerConfig {
             database_url: common::config::require("DATABASE_URL")?,
             poll_interval_secs,
             downloads_path: common::config::optional_or("DOWNLOADS_PATH", "/downloads"),
+            cookies_file: common::config::optional_or("YTDLP_COOKIES_FILE", "/cookies/cookies.txt"),
             discord_webhook: common::config::optional("DISCORD_NOTIFY_WEBHOOK"),
             telegram_bot_token: common::config::optional("TELEGRAM_BOT_TOKEN"),
             telegram_chat_id: common::config::optional("TELEGRAM_CHAT_ID"),

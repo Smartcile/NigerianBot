@@ -57,11 +57,11 @@ COPY --from=builder /app/target/release/nigerianbot /usr/local/bin/nigerianbot
 # Built dashboard, served by the API at "/".
 COPY --from=frontend /dash/dist /app/static
 
-# Seed the downloads dir owned by appuser so a FRESH named volume inherits write
-# permission for the non-root user.
+# Seed the downloads + cookies dirs owned by appuser so FRESH named volumes
+# inherit write permission for the non-root user (cookies are uploaded via the GUI).
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /downloads \
-    && chown 10001:10001 /downloads
+    && mkdir -p /downloads /cookies \
+    && chown 10001:10001 /downloads /cookies
 USER appuser
 
 EXPOSE 8000

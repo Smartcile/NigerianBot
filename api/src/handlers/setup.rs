@@ -31,6 +31,7 @@ pub async fn status(state: web::Data<AppState>, _user: AuthUser) -> HttpResponse
     HttpResponse::Ok().json(json!({
         "database": true,
         "api": { "configured": true },
+        "pin_default": crate::auth::pin_is_default(&state.db).await,
         "bot": {
             "configured": bot_commands > 0,
             "commands": bot_commands,

@@ -31,7 +31,17 @@ RUN apt-get update \
 COPY --from=planner /app/recipe.json recipe.json
 # This layer is the slow one — cached unless Cargo.toml/Cargo.lock change.
 RUN cargo chef cook --release --recipe-path recipe.json -p app
-COPY . .
+# Copy ONLY Rust inputs (not dashboard/docs). A dashboard or docs edit then
+# rebuilds just the frontend stage below instead of recompiling every crate.
+COPY Cargo.toml Cargo.lock ./
+COPY common ./common
+COPY app ./app
+COPY bot ./bot
+COPY api ./api
+COPY worker ./worker
+COPY telegram ./telegram
+COPY scheduler ./scheduler
+COPY migrations ./migrations
 RUN cargo build --release -p app
 
 # ─── Runtime stage ─────────────────────────────────────────────────────────

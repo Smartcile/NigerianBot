@@ -20,6 +20,8 @@ pub struct ApiConfig {
     pub downloads_path: String,
     /// Path where the GUI-uploaded yt-dlp cookies file is stored.
     pub cookies_path: String,
+    /// Optional proxy passed to yt-dlp (also used when expanding playlists).
+    pub ytdlp_proxy: Option<String>,
     /// Sonarr (TV) base URL + API key, when configured.
     pub sonarr_url: Option<String>,
     pub sonarr_api_key: Option<String>,
@@ -58,6 +60,7 @@ impl ApiConfig {
             token_ttl_secs,
             downloads_path: common::config::optional_or("DOWNLOADS_PATH", "/downloads"),
             cookies_path: common::config::optional_or("YTDLP_COOKIES_FILE", "/cookies/cookies.txt"),
+            ytdlp_proxy: common::config::optional("YTDLP_PROXY"),
             sonarr_url: common::config::optional("SONARR_URL"),
             sonarr_api_key: common::config::optional("SONARR_API_KEY"),
             radarr_url: common::config::optional("RADARR_URL"),

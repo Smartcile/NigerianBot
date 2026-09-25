@@ -300,13 +300,27 @@ async fn expand_playlist(state: &AppState, url: &str) -> Vec<Episode> {
     if std::path::Path::new(&state.config.cookies_path).is_file() {
         cmd.arg("--cookies").arg(&state.config.cookies_path);
     }
+    if let Some(proxy) = &state.config.ytdlp_proxy {
+        cmd.arg("--proxy").arg(proxy);
+    }
 
-    let output =
-        match tokio::time::timeout(std::time::Duration::from_secs(45), cmd.arg(url).output()).await
-        {
-            Ok(Ok(o)) if o.status.success() => o,
-            _ => return Vec::new(),
-        };
+    let output = match tokio::time::timeout(
+        std::time::Duration::from_secs(45),
+        cmd.arg(url).output(),
+    )
+    .await
+    {
+        Ok(Ok(o)) if o.status.success() => o,
+        Ok(Ok(o)) => {
+            let err = String::from_utf8_lossy(&o.stderr);
+            tracing::warn!(%url, error = %err.trim().lines().last().unwrap_or(""), "playlist expansion failed");
+            return Vec::new();
+        }
+        _ => {
+            tracing::warn!(%url, "playlist expansion timed out");
+            return Vec::new();
+        }
+    };
 
     let data: Value = match serde_json::from_slice(&output.stdout) {
         Ok(v) => v,
@@ -345,6 +359,7 @@ async fn expand_playlist(state: &AppState, url: &str) -> Vec<Episode> {
             out.push(Episode { url, title });
         }
     }
+    tracing::info!(%url, episodes = out.len(), "playlist expanded");
     out
 }
 

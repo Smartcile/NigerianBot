@@ -105,6 +105,11 @@ async fn run_ytdlp(
         cmd.arg("--cookies").arg(&config.cookies_file);
     }
 
+    // Optional proxy (e.g. a US exit for Tubi / geo-blocked sites).
+    if let Some(proxy) = &config.proxy {
+        cmd.arg("--proxy").arg(proxy);
+    }
+
     let mut child = cmd
         .arg(url)
         .stdout(Stdio::piped())

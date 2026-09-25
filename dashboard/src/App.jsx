@@ -1589,6 +1589,7 @@ const SETUP = [
       ['DOWNLOADS_PATH', 'Container path for finished files (served at /media).'],
       ['DISCORD_NOTIFY_WEBHOOK', 'Optional Discord webhook for "done" pings.'],
       ['YTDLP_COOKIES_FILE', 'Stored cookies path (advanced; default /cookies/cookies.txt).'],
+      ['YTDLP_PROXY', 'Optional proxy/VPN for geo-locked sites (e.g. US for Tubi).'],
     ],
     steps: [
       'Set DOWNLOADS_HOST_PATH to a host folder Sonarr/Radarr also mount (chown 10001:10001).',

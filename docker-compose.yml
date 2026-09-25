@@ -76,6 +76,8 @@ services:
       WORKER_POLL_INTERVAL_SECS: ${WORKER_POLL_INTERVAL_SECS:-30}
       # Optional cookies file so yt-dlp can fetch login-gated sites (some Vimeo).
       YTDLP_COOKIES_FILE: ${YTDLP_COOKIES_FILE:-}
+      # Optional proxy for yt-dlp (e.g. a US exit for Tubi). socks5:// or http://.
+      YTDLP_PROXY: ${YTDLP_PROXY:-}
       # ── Media (Sonarr / Radarr) ────────────────────────────────────────────
       SONARR_URL: ${SONARR_URL:-}
       SONARR_API_KEY: ${SONARR_API_KEY:-}

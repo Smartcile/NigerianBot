@@ -13,6 +13,9 @@ pub struct WorkerConfig {
     /// Netscape cookies file passed to yt-dlp (for sites needing login, e.g.
     /// some Vimeo videos). Uploaded via the web GUI; path overridable by env.
     pub cookies_file: String,
+    /// Optional proxy for yt-dlp (e.g. a US exit for Tubi), like
+    /// `socks5://gluetun:1080` or `http://gluetun:8888`.
+    pub proxy: Option<String>,
     /// Optional outbound notification targets (set either or both).
     pub discord_webhook: Option<String>,
     pub telegram_bot_token: Option<String>,
@@ -33,6 +36,7 @@ impl WorkerConfig {
             poll_interval_secs,
             downloads_path: common::config::optional_or("DOWNLOADS_PATH", "/downloads"),
             cookies_file: common::config::optional_or("YTDLP_COOKIES_FILE", "/cookies/cookies.txt"),
+            proxy: common::config::optional("YTDLP_PROXY"),
             discord_webhook: common::config::optional("DISCORD_NOTIFY_WEBHOOK"),
             telegram_bot_token: common::config::optional("TELEGRAM_BOT_TOKEN"),
             telegram_chat_id: common::config::optional("TELEGRAM_CHAT_ID"),

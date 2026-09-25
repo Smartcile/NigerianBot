@@ -1,13 +1,14 @@
-name: Build & push images
+name: Build & push image
 
-# Builds the service Docker images on GitHub's runners and pushes them to the
-# GitHub Container Registry (GHCR). Portainer then just pulls the prebuilt
-# images, so the server never compiles Rust.
+# Builds the single all-in-one image on GitHub's runners and pushes it to the
+# GitHub Container Registry (GHCR). Portainer then just pulls the prebuilt image,
+# so the server never compiles Rust.
 
 on:
   push:
     branches: [main]
     paths:
+      - "app/**"
       - "bot/**"
       - "api/**"
       - "common/**"
@@ -18,7 +19,7 @@ on:
       - "migrations/**"
       - "Cargo.toml"
       - "Cargo.lock"
-      - "Dockerfile.*"
+      - "Dockerfile"
       - ".github/workflows/build.yml"
   workflow_dispatch: {}
 
@@ -28,17 +29,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    strategy:
-      matrix:
-        include:
-          - dockerfile: Dockerfile.bot
-            image: nigerianbot-bot
-          - dockerfile: Dockerfile.api
-            image: nigerianbot-api
-          - dockerfile: Dockerfile.worker
-            image: nigerianbot-worker
-          - dockerfile: Dockerfile.telegram
-            image: nigerianbot-telegram
     steps:
       - uses: actions/checkout@v4
 
@@ -54,20 +44,20 @@ jobs:
       # GHCR requires a lowercase image path.
       - name: Compute image name
         id: img
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/nigerianbot" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ${{ matrix.dockerfile }}
+          file: Dockerfile
           push: true
           platforms: linux/amd64
           tags: |
             ${{ steps.img.outputs.name }}:latest
             ${{ steps.img.outputs.name }}:${{ github.sha }}
           # Registry-based layer cache on GHCR (reliable, unlike type=gha which
-          # 504'd). Combined with cargo-chef in the Dockerfiles, unchanged
+          # 504'd). Combined with cargo-chef in the Dockerfile, unchanged
           # dependencies are reused so only changed code recompiles.
           cache-from: type=registry,ref=${{ steps.img.outputs.name }}:buildcache
           cache-to: type=registry,ref=${{ steps.img.outputs.name }}:buildcache,mode=max

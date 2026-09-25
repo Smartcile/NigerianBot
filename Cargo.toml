@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["common", "bot", "api", "scheduler", "worker", "telegram"]
+members = ["common", "app", "bot", "api", "scheduler", "worker", "telegram"]
 
 [workspace.package]
 version = "0.1.0"
@@ -49,3 +49,9 @@ teloxide = { version = "0.13", default-features = false, features = ["rustls", "
 
 # Shared crate
 common = { path = "common" }
+
+# Service crates, reused as libraries by the all-in-one `app` binary.
+bot = { path = "bot" }
+api = { path = "api" }
+worker = { path = "worker" }
+telegram = { path = "telegram" }

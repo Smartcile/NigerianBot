@@ -53,30 +53,28 @@ pipeline. Built to run 24/7 in Docker.
 
 ## 🏗️ Architecture
 
-A Cargo workspace of services that share a `common` library and one database:
+One Rust binary (`app`) runs every surface as concurrent tokio tasks over a shared
+`common` library and one database — so the whole stack is just **`postgres` + `app`**:
 
 ```
-                         ┌──────────────────────────────┐
-        Discord  ◀──────▶│  bot  (serenity + songbird)  │
-        (gateway,        │  · voice-bot pool            │
-         voice, DAVE)    │  · background scheduler      │◀──▶ Sonarr / Radarr
-                         └───────────────┬──────────────┘
-                                         │
-   Browser ──▶ React dashboard ──▶ ┌─────┴────────┐   ┌────────────────────┐
-                                   │  api          │   │  PostgreSQL 16     │
-                                   │  (actix-web,  │◀─▶│  audit · settings  │
-                                   │   JWT, serves │   │  queue · triggers  │
-                                   │   the SPA)    │   │  schedules         │
-                                   └───────────────┘   └────────────────────┘
+        Discord  ◀──▶ ┌──────────────── one process: `app` ────────────────┐
+        Browser  ───▶ │  bot       commands · voice pool · scheduler       │ ◀──▶ PostgreSQL 16
+        Telegram ◀──▶ │  api       REST (JWT) + serves the React dashboard │
+                      │  telegram  commands + notifications                │
+                      │  worker    download pipeline (yt-dlp)              │
+                      └──────────────────────────┬─────────────────────────┘
+                                                 ▼
+                                   Sonarr / Radarr · yt-dlp · ffmpeg
 ```
 
-| Service       | Stack                | Role                                          |
-|---------------|----------------------|-----------------------------------------------|
-| **bot**       | serenity, songbird   | Discord bot, voice, media, in-process scheduler |
-| **api**       | actix-web + React    | REST API (JWT) + serves the dashboard SPA     |
-| **worker**    | tokio, yt-dlp        | Background jobs — the download pipeline       |
-| **telegram**  | teloxide             | Telegram bot over the same core               |
-| **common**    | (library)            | Shared config, telemetry, DB pool, media helpers |
+| Crate         | Stack                | Role                                             |
+|---------------|----------------------|--------------------------------------------------|
+| **app**       | tokio                | Runs bot + api + worker + telegram in one process |
+| **bot**       | serenity, songbird   | Discord bot, voice, media, in-process scheduler  |
+| **api**       | actix-web + React    | REST API (JWT) + serves the dashboard SPA        |
+| **worker**    | tokio, yt-dlp        | Download pipeline                                |
+| **telegram**  | teloxide             | Telegram bot over the same core                  |
+| **common**    | (library)            | Shared config, telemetry, DB pool, connectors    |
 
 ---
 
@@ -109,11 +107,12 @@ Auth: JWT · CI/CD: GitHub Actions → GHCR · Deploy: Docker Compose / Portaine
 ## ⚙️ How it's deployed
 
 1. Push to `main`.
-2. **GitHub Actions** builds the `bot`, `api`, `worker`, and `telegram` images
-   (cargo-chef + registry cache keep it fast; the API image also builds the React
-   dashboard) and pushes them to the **GitHub Container Registry**.
-3. The server (e.g. **Portainer**) pulls the prebuilt images — no compiling on the
-   host. The dashboard is at `http://<server>:8000/`.
+2. **GitHub Actions** builds the single all-in-one image (`Dockerfile` → `-p app`;
+   the image also builds the React dashboard. cargo-chef + registry cache keep it
+   fast) and pushes it to the **GitHub Container Registry**.
+3. The server (e.g. **Portainer**) pulls the prebuilt image — no compiling on the
+   host. The stack is `postgres` + `app`; the dashboard is at
+   `http://<server>:8000/`.
 
 The whole stack is defined in [`docker-compose.yml`](docker-compose.yml). Secrets
 are injected as environment variables and never committed. The app serves **plain

@@ -1,17 +1,20 @@
-# NigerianBot — Phase 4 stack (Discord bot + PostgreSQL + API).
+# NigerianBot — all-in-one stack (PostgreSQL + one app container).
 #
-# Images are built by GitHub Actions and published to GHCR, so Portainer just
-# PULLS them. Deploy as a Stack in Portainer (Stacks → Add stack → Repository)
-# and set these under "Environment variables":
+# The `app` image runs every surface in a single process: the Discord bot, the
+# API + dashboard, the download worker, and the Telegram bot. Deploy as a Stack
+# in Portainer (Stacks → Add stack → Repository) and set these under
+# "Environment variables":
 #   DISCORD_TOKEN      (required)  your Discord bot token
 #   DISCORD_GUILD_ID   (optional)  your server id for instant command registration
-#   POSTGRES_PASSWORD  (required)  the database password you chose in Phase 3
-#   API_KEY            (required)  secret to log into the API (the one generated earlier)
-#   JWT_SECRET         (required)  secret used to sign API tokens (generated earlier)
-#   API_PORT           (optional)  port the API listens on / is published on (default 8000)
-#   MUSIC_HOST_PATH    (optional)  path to your music folder on the server (default ./music)
+#   POSTGRES_PASSWORD  (required)  the database password
+#   API_KEY            (required)  secret to log into the API/dashboard
+#   JWT_SECRET         (required)  secret used to sign API tokens
+#   TELEGRAM_BOT_TOKEN (optional)  enables the Telegram surface + notifications
+#   SONARR_*/RADARR_*  (optional)  media panel + /sonarr, /radarr
+#   MUSIC_HOST_PATH    (optional)  path to your music folder on the server
 #
-# Later phases add redis, scheduler, worker, and the dashboard.
+# Images are built by GitHub Actions and published to GHCR, so Portainer just
+# PULLS them (never use compose `build:` in Portainer).
 
 services:
   postgres:
@@ -30,55 +33,9 @@ services:
       timeout: 5s
       retries: 5
 
-  bot:
-    image: ghcr.io/smartcile/nigerianbot-bot:latest
-    container_name: nigerian-bot
-    restart: unless-stopped
-    pull_policy: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      # Required: your Discord bot token.
-      DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN in Portainer env}
-      # Optional but recommended for testing: your server (guild) id makes slash
-      # commands register instantly instead of taking up to ~1 hour globally.
-      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
-      # Optional extra bot tokens for the voice pool — each adds a bot that can
-      # hold its own voice connection, so multiple channels can play at once.
-      # Create extra Discord apps, invite them, and set their tokens here.
-      DISCORD_TOKEN_2: ${DISCORD_TOKEN_2:-}
-      DISCORD_TOKEN_3: ${DISCORD_TOKEN_3:-}
-      DISCORD_TOKEN_4: ${DISCORD_TOKEN_4:-}
-      DISCORD_TOKEN_5: ${DISCORD_TOKEN_5:-}
-      # Built from the postgres settings above; `postgres` is the service hostname.
-      DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
-      # Folder (inside the container) where local music files live.
-      MUSIC_MOUNT_PATH: /music
-      # Comma-separated Discord user ids always treated as Admin (the server owner
-      # is always admin too). Used by /admin and role-based access.
-      ADMIN_DISCORD_IDS: ${ADMIN_DISCORD_IDS:-}
-      # Sonarr (TV) and Radarr (movies) — set URL + API key to enable /sonarr and
-      # /radarr. URL must be reachable from this container (e.g. http://host-ip:8989).
-      SONARR_URL: ${SONARR_URL:-}
-      SONARR_API_KEY: ${SONARR_API_KEY:-}
-      RADARR_URL: ${RADARR_URL:-}
-      RADARR_API_KEY: ${RADARR_API_KEY:-}
-      # Voice cloning / TTS service (Part 2 of the bot uses this).
-      TTS_URL: ${TTS_URL:-http://tts:8001}
-      VOICES_DIR: /voices
-      # Log verbosity: info | debug | trace
-      RUST_LOG: ${RUST_LOG:-info}
-    volumes:
-      # Mounts your music folder read-only into the container at /music.
-      # Set MUSIC_HOST_PATH in Portainer to your music drive/folder on the server.
-      - ${MUSIC_HOST_PATH:-./music}:/music:ro
-      # Voice enrollment clips, shared read/write with the tts service.
-      - voices:/voices
-
-  api:
-    image: ghcr.io/smartcile/nigerianbot-api:latest
-    container_name: nigerian-api
+  app:
+    image: ghcr.io/smartcile/nigerianbot:latest
+    container_name: nigerianbot
     restart: unless-stopped
     pull_policy: always
     depends_on:
@@ -88,94 +45,47 @@ services:
       # API_PORT controls the port everywhere (host + container). Default 8000.
       - "${API_PORT:-8000}:${API_PORT:-8000}"
     environment:
+      # ── Discord ────────────────────────────────────────────────────────────
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN in Portainer env}
+      DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      # Optional extra bot tokens for the voice pool (simultaneous channels).
+      DISCORD_TOKEN_2: ${DISCORD_TOKEN_2:-}
+      DISCORD_TOKEN_3: ${DISCORD_TOKEN_3:-}
+      DISCORD_TOKEN_4: ${DISCORD_TOKEN_4:-}
+      DISCORD_TOKEN_5: ${DISCORD_TOKEN_5:-}
+      ADMIN_DISCORD_IDS: ${ADMIN_DISCORD_IDS:-}
+      # ── Database ───────────────────────────────────────────────────────────
       DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
+      # ── API / dashboard ────────────────────────────────────────────────────
       API_HOST: 0.0.0.0
       API_PORT: ${API_PORT:-8000}
-      # Secret clients present to /api/auth/login to receive a JWT.
       API_KEY: ${API_KEY:?set API_KEY in Portainer env}
-      # Secret used to sign JWTs.
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in Portainer env}
-      # Finished downloads, served read-only at /media for the web GUI.
+      DASHBOARD_DIR: /app/static
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      # ── Music ──────────────────────────────────────────────────────────────
+      MUSIC_MOUNT_PATH: /music
+      # ── Downloads / worker ─────────────────────────────────────────────────
       DOWNLOADS_PATH: /downloads
-      # Media panel (Sonarr/Radarr). URL must be reachable from this container.
+      DISCORD_NOTIFY_WEBHOOK: ${DISCORD_NOTIFY_WEBHOOK:-}
+      WORKER_POLL_INTERVAL_SECS: ${WORKER_POLL_INTERVAL_SECS:-30}
+      # ── Media (Sonarr / Radarr) ────────────────────────────────────────────
       SONARR_URL: ${SONARR_URL:-}
       SONARR_API_KEY: ${SONARR_API_KEY:-}
       RADARR_URL: ${RADARR_URL:-}
       RADARR_API_KEY: ${RADARR_API_KEY:-}
-      # Lets the Telegram panel show whether the bot is configured.
+      # ── Telegram ───────────────────────────────────────────────────────────
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      # Shown on the Setup page (and used to build file links).
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
-      RUST_LOG: ${RUST_LOG:-info}
-    volumes:
-      - downloads:/downloads:ro
-
-  # Background job queue: currently the download pipeline (Vimeo/YouTube/URL).
-  worker:
-    image: ghcr.io/smartcile/nigerianbot-worker:latest
-    container_name: nigerian-worker
-    restart: unless-stopped
-    pull_policy: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
-      DOWNLOADS_PATH: /downloads
-      WORKER_POLL_INTERVAL_SECS: ${WORKER_POLL_INTERVAL_SECS:-30}
-      # Optional notifications when a download finishes.
-      DISCORD_NOTIFY_WEBHOOK: ${DISCORD_NOTIFY_WEBHOOK:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
-      RUST_LOG: ${RUST_LOG:-info}
-    volumes:
-      - downloads:/downloads
-
-  # Telegram surface: commands + notifications over the same core.
-  telegram:
-    image: ghcr.io/smartcile/nigerianbot-telegram:latest
-    container_name: nigerian-telegram
-    restart: unless-stopped
-    pull_policy: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?set TELEGRAM_BOT_TOKEN in Portainer env}
-      DATABASE_URL: postgres://${POSTGRES_USER:-nigerian}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nigerian_bot}
-      # Comma-separated Telegram user ids always treated as Admin (bootstrap).
       TELEGRAM_ADMIN_IDS: ${TELEGRAM_ADMIN_IDS:-}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      # ── Logging ────────────────────────────────────────────────────────────
       RUST_LOG: ${RUST_LOG:-info}
-
-  # Voice-cloning TTS (XTTS-v2). Built ON THIS HOST (needs a GPU + the NVIDIA
-  # Container Toolkit). First start downloads the model (~2 GB) into tts_models.
-  tts:
-    build:
-      context: .
-      dockerfile: Dockerfile.tts
-    image: nigerianbot-tts:local
-    container_name: nigerian-tts
-    restart: unless-stopped
-    environment:
-      VOICES_DIR: /voices
     volumes:
-      - voices:/voices
-      - tts_models:/root/.local/share/tts
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    # If the above GPU syntax doesn't work on your host, remove the `deploy:`
-    # block and instead add:  gpus: all
+      # Your music folder, read-only. Set MUSIC_HOST_PATH to your music drive.
+      - ${MUSIC_HOST_PATH:-./music}:/music:ro
+      # Finished downloads (also served by the API at /media).
+      - downloads:/downloads
 
 volumes:
   pgdata:
-  voices:
-  tts_models:
   downloads:

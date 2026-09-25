@@ -1,0 +1,19 @@
+[package]
+name = "app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "nigerianbot"
+path = "src/main.rs"
+
+[dependencies]
+common.workspace = true
+bot.workspace = true
+api.workspace = true
+worker.workspace = true
+telegram.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

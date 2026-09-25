@@ -21,15 +21,22 @@ A single Cargo workspace (`Cargo.toml` at the root) with these member crates:
 
 | Crate       | Binary                | Role                                                       |
 |-------------|-----------------------|------------------------------------------------------------|
-| `common`    | (lib)                 | Shared config, telemetry, and DB pool helpers              |
-| `bot`       | `nigerian-bot`        | Discord bot (serenity) — slash commands & events           |
-| `api`       | `nigerian-api`        | REST API (actix-web) for the dashboard & control plane     |
-| `scheduler` | `nigerian-scheduler`  | Cron-style scheduled workflows (tokio-cron-scheduler)      |
-| `worker`    | `nigerian-worker`     | Async job queue — currently the download pipeline (yt-dlp) |
-| `telegram`  | `nigerian-telegram`   | Telegram bot (teloxide) — commands & notifications         |
+| `common`    | (lib)                 | Shared config, telemetry, DB pool, `arr`/media helpers     |
+| `app`       | `nigerianbot`         | **All-in-one runner** — bot + api + worker + telegram      |
+| `bot`       | `nigerian-bot`        | Discord bot (serenity) — also a lib for `app`              |
+| `api`       | `nigerian-api`        | REST API (actix-web) + dashboard — also a lib for `app`    |
+| `scheduler` | `nigerian-scheduler`  | Cron-style scheduled workflows (scaffolding)               |
+| `worker`    | `nigerian-worker`     | Download pipeline (yt-dlp) — also a lib for `app`          |
+| `telegram`  | `nigerian-telegram`   | Telegram bot (teloxide) — also a lib for `app`             |
 
-Non-Rust pieces: `dashboard/` (React, Phase 7), `migrations/` (SQL, Phase 3),
-`docker-compose.yml` (Phase 9), `.github/workflows/` (Phase 10).
+**Deployment is one container.** The `app` binary runs every surface as concurrent
+tokio tasks (`tokio::try_join!`), so the stack is just `postgres` + `app`. Each
+service crate exposes `pub async fn run()` and keeps a standalone binary for local
+dev. One root `Dockerfile` builds `-p app`. An unset `TELEGRAM_BOT_TOKEN` simply
+disables the Telegram surface.
+
+Non-Rust pieces: `dashboard/` (React), `migrations/` (SQL),
+`docker-compose.yml`, `.github/workflows/`.
 
 ## Conventions
 
@@ -181,12 +188,19 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   still can't be `cargo check`ed on Windows (songbird/libopus); verify bot changes
   in Docker (see Phase 6 note).
 
+- **All-in-one consolidation (DONE, revised):** the separate services were merged
+  into one process. `app/src/main.rs` runs `bot::run()`, `api::run()`,
+  `worker::run()`, and `telegram::run()` via `tokio::try_join!`; each crate is now
+  a lib + thin binary (so the standalone binaries still work for local dev). One
+  root `Dockerfile` builds the frontend + `-p app`; compose is just `postgres` +
+  `app`; the `tts` service was removed from the stack. Image:
+  `ghcr.io/smartcile/nigerianbot:latest`.
+
 ## Deploy / CI cheatsheet
 
-Push to `main` → `.github/workflows/build.yml` builds the images (matrix:
-`Dockerfile.bot`→bot, `Dockerfile.api`→api, `Dockerfile.worker`→worker,
-`Dockerfile.telegram`→telegram) → pushes to
-`ghcr.io/smartcile/nigerianbot-<svc>:latest` (GHCR packages are public) → user does
-"Pull and redeploy" in Portainer. Never use compose `build:` in Portainer (its
-builder mis-resolves paths) and never use `cache-to: type=gha` (504s). Use the
-full path to `gh`: `C:\Program Files\GitHub CLI\gh.exe`.
+Push to `main` → `.github/workflows/build.yml` builds the single all-in-one image
+(`Dockerfile` → `-p app`) → pushes `ghcr.io/smartcile/nigerianbot:latest` (make the
+GHCR package public once) → "Pull and redeploy" in Portainer. Stack = `postgres` +
+`app`. Never use compose `build:` in Portainer (its builder mis-resolves paths) and
+never use `cache-to: type=gha` (504s). Use the full path to `gh`:
+`C:\Program Files\GitHub CLI\gh.exe`.

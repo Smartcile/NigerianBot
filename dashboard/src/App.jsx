@@ -1,11 +1,20 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react'
 
 const TOKEN_KEY = 'nb_token'
 const CHANGE_KEY = 'nb_must_change'
+const THEME_KEY = 'nb_theme'
 
 export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY))
   const [mustChange, setMustChange] = useState(() => localStorage.getItem(CHANGE_KEY) === '1')
+  const [theme, setTheme] = useState(() =>
+    localStorage.getItem(THEME_KEY) === 'classic' ? 'classic' : '419',
+  )
+
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem(THEME_KEY, theme)
+  }, [theme])
 
   const login = useCallback((t, mustChangePin) => {
     localStorage.setItem(TOKEN_KEY, t)
@@ -27,7 +36,7 @@ export default function App() {
 
   if (!token) return <Login onLogin={login} />
   if (mustChange) return <ForceChangePin token={token} onDone={pinChanged} onLogout={logout} />
-  return <Shell token={token} onLogout={logout} />
+  return <Shell token={token} onLogout={logout} theme={theme} onTheme={setTheme} />
 }
 
 /* ── API helper ──────────────────────────────────────────────────────────── */
@@ -242,7 +251,7 @@ const TABS = [
   ['setup', '📖 SETUP'],
 ]
 
-function Shell({ token, onLogout }) {
+function Shell({ token, onLogout, theme, onTheme }) {
   const [tab, setTab] = useState('overview')
   const [popup, setPopup] = useState(true)
   const api = useMemo(() => makeApi(token, onLogout), [token, onLogout])
@@ -299,7 +308,7 @@ function Shell({ token, onLogout }) {
         {tab === 'schedules' && <Schedules api={api} />}
         {tab === 'users' && <Users api={api} />}
         {tab === 'telegram' && <Telegram api={api} />}
-        {tab === 'setup' && <Setup api={api} />}
+        {tab === 'setup' && <Setup api={api} theme={theme} onTheme={onTheme} />}
       </main>
 
       <footer className="foot">
@@ -1672,7 +1681,7 @@ function statusFor(key, st) {
   }
 }
 
-function Setup({ api }) {
+function Setup({ api, theme, onTheme }) {
   const [st, setSt] = useState(null)
   const [updated, setUpdated] = useState('')
 
@@ -1758,10 +1767,29 @@ function Setup({ api }) {
         })}
       </div>
 
+      <ThemeCard theme={theme} onTheme={onTheme} />
       <ChangePinCard api={api} />
 
       <div className="updated">STATUS SYNCED {updated}</div>
     </>
+  )
+}
+
+function ThemeCard({ theme, onTheme }) {
+  return (
+    <section className="section highlight">
+      <h2>🎨 APPEARANCE</h2>
+      <div className="form-grid">
+        <label>
+          DASHBOARD THEME
+          <select value={theme} onChange={(e) => onTheme(e.target.value)}>
+            <option value="419">HONOURABLE BUSINESS (419)</option>
+            <option value="classic">CLASSIC DARK</option>
+          </select>
+        </label>
+      </div>
+      <div className="muted small">Saved in this browser. Applies to the whole dashboard.</div>
+    </section>
   )
 }
 

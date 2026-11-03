@@ -55,6 +55,10 @@ pub async fn status(state: web::Data<AppState>, _user: AuthUser) -> HttpResponse
             "done": downloads_done,
             "active": downloads_active,
         },
+        "compose": {
+            "dir": state.config.compose_dir,
+            "dir_exists": std::path::Path::new(&state.config.compose_dir).is_dir(),
+        },
         "public_base_url": state.config.public_base_url,
     }))
 }

@@ -18,6 +18,8 @@ pub struct ApiConfig {
     pub token_ttl_secs: i64,
     /// Directory of finished downloads, served read-only at `/media`.
     pub downloads_path: String,
+    /// Directory where published Compose files are written (Dockhand's watch dir).
+    pub compose_dir: String,
     /// Path where the GUI-uploaded yt-dlp cookies file is stored.
     pub cookies_path: String,
     /// Optional proxy passed to yt-dlp (also used when expanding playlists).
@@ -59,6 +61,7 @@ impl ApiConfig {
             default_pin: common::config::optional_or("DASHBOARD_PIN", "1234"),
             token_ttl_secs,
             downloads_path: common::config::optional_or("DOWNLOADS_PATH", "/downloads"),
+            compose_dir: common::config::optional_or("COMPOSE_DIR", "/compose"),
             cookies_path: common::config::optional_or("YTDLP_COOKIES_FILE", "/cookies/cookies.txt"),
             ytdlp_proxy: common::config::optional("YTDLP_PROXY"),
             sonarr_url: common::config::optional("SONARR_URL"),

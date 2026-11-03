@@ -211,6 +211,15 @@ Copy `.env.example` to `.env` and fill in secrets before running locally.
   login. `API_KEY` remains an optional credential for scripts/clients. Endpoints:
   `POST /api/auth/login` (`{pin}`) and `POST /api/auth/change-pin`.
 
+- **Compose builder (DONE):** `common::compose` holds a typed subset model with
+  validation + deterministic YAML rendering (`serde_yaml_ng`); migration
+  `0010_compose.sql`; API `/api/compose/projects|defaults|files|render|publish`
+  (reads need auth, mutations use the new `AdminUser` guard); dashboard **COMPOSE**
+  tab (drag saved bind mounts/networks/env keys onto service cards, live YAML,
+  save/publish). Secret values are never stored/rendered — only `${KEY}` refs and
+  a blank `<name>.env`. Set `COMPOSE_HOST_PATH` to the folder Dockhand watches
+  (mounted at `/compose`, `COMPOSE_DIR`) and `chown 10001:10001` the host folder.
+
 ## Deploy / CI cheatsheet
 
 Push to `main` → `.github/workflows/build.yml` builds the single all-in-one image

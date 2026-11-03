@@ -69,6 +69,51 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                     "/media/sonarr/episodes",
                     web::get().to(handlers::media::sonarr_episodes),
                 )
+                // --- Compose builder ---
+                .route(
+                    "/compose/projects",
+                    web::get().to(handlers::compose::list_projects),
+                )
+                .route(
+                    "/compose/projects",
+                    web::post().to(handlers::compose::create_project),
+                )
+                .route(
+                    "/compose/projects/{id}",
+                    web::get().to(handlers::compose::get_project),
+                )
+                .route(
+                    "/compose/projects/{id}",
+                    web::put().to(handlers::compose::update_project),
+                )
+                .route(
+                    "/compose/projects/{id}",
+                    web::delete().to(handlers::compose::delete_project),
+                )
+                .route(
+                    "/compose/projects/{id}/publish",
+                    web::post().to(handlers::compose::publish_project),
+                )
+                .route(
+                    "/compose/defaults",
+                    web::get().to(handlers::compose::list_defaults),
+                )
+                .route(
+                    "/compose/defaults",
+                    web::post().to(handlers::compose::create_default),
+                )
+                .route(
+                    "/compose/defaults/{id}",
+                    web::delete().to(handlers::compose::delete_default),
+                )
+                .route(
+                    "/compose/render",
+                    web::post().to(handlers::compose::render_preview),
+                )
+                .route(
+                    "/compose/files",
+                    web::get().to(handlers::compose::list_files),
+                )
                 // --- Schedules ---
                 .route("/schedules", web::get().to(handlers::schedules::list))
                 .route("/schedules", web::post().to(handlers::schedules::create))

@@ -66,6 +66,17 @@ function makeApi(token, onLogout) {
         ),
       )
     },
+    async put(path, body) {
+      return json(
+        check(
+          await fetch(path, {
+            method: 'PUT',
+            headers: { ...auth, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body ?? {}),
+          }),
+        ),
+      )
+    },
     async postText(path, text) {
       return json(
         check(
@@ -246,6 +257,7 @@ const TABS = [
   ['downloads', '📥 CARGO'],
   ['media', '🎬 BUSINESS LOTS'],
   ['schedules', '⏰ PAYMENT PLAN'],
+  ['compose', '🧩 COMPOSE'],
   ['users', '👑 HONOURABLES'],
   ['telegram', '✉️ CABLEGRAM'],
   ['setup', '📖 SETUP'],
@@ -306,6 +318,7 @@ function Shell({ token, onLogout, theme, onTheme }) {
         {tab === 'downloads' && <Downloads api={api} />}
         {tab === 'media' && <Media api={api} />}
         {tab === 'schedules' && <Schedules api={api} />}
+        {tab === 'compose' && <Compose api={api} />}
         {tab === 'users' && <Users api={api} />}
         {tab === 'telegram' && <Telegram api={api} />}
         {tab === 'setup' && <Setup api={api} theme={theme} onTheme={onTheme} />}
@@ -1321,6 +1334,658 @@ function Schedules({ api }) {
   )
 }
 
+/* ── Compose builder ─────────────────────────────────────────────────────── */
+
+function blankProject() {
+  return { id: null, name: '', description: '', model: { services: [], networks: [], volumes: [] } }
+}
+
+function projectFromRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || '',
+    model: row.model || { services: [], networks: [], volumes: [] },
+  }
+}
+
+function newService(name) {
+  return {
+    name,
+    image: '',
+    build: null,
+    ports: [],
+    volumes: [],
+    environment: [],
+    networks: [],
+    depends_on: [],
+    restart: 'unless-stopped',
+    command: null,
+  }
+}
+
+const toLines = (text) =>
+  text
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+const fromLines = (list) => (list || []).join('\n')
+const envToText = (env) => (env || []).map((e) => `${e.key}=${e.value ?? ''}`).join('\n')
+const secretKeysOf = (env) => (env || []).filter((e) => e.secret).map((e) => e.key)
+
+function textToEnv(text, previous) {
+  const secrets = new Set(secretKeysOf(previous))
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const i = line.indexOf('=')
+      const key = (i === -1 ? line : line.slice(0, i)).trim()
+      if (!key) return null
+      const secret = secrets.has(key)
+      return { key, value: secret ? null : i === -1 ? '' : line.slice(i + 1), secret }
+    })
+    .filter(Boolean)
+}
+
+function applySecrets(env, text) {
+  const secrets = new Set(
+    text
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  )
+  return (env || []).map((e) =>
+    secrets.has(e.key) ? { ...e, secret: true, value: null } : { ...e, secret: false },
+  )
+}
+
+function Compose({ api }) {
+  const [projects, setProjects] = useState([])
+  const [current, setCurrent] = useState(null)
+  const [defaults, setDefaults] = useState([])
+  const [files, setFiles] = useState([])
+  const [composeDir, setComposeDir] = useState('')
+  const [yaml, setYaml] = useState('')
+  const [previewErr, setPreviewErr] = useState('')
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [dragOver, setDragOver] = useState(-1)
+  const [defForm, setDefForm] = useState({
+    kind: 'bind_mount',
+    name: '',
+    source: '',
+    target: '',
+    mode: 'rw',
+    keys: '',
+  })
+
+  const load = useCallback(async () => {
+    try {
+      const [p, d, f] = await Promise.all([
+        api.get('/api/compose/projects'),
+        api.get('/api/compose/defaults'),
+        api.get('/api/compose/files'),
+      ])
+      setProjects(p?.projects || [])
+      setDefaults(d?.defaults || [])
+      setFiles(f?.files || [])
+      setComposeDir(f?.dir || '')
+    } catch {
+      /* api helper handles auth */
+    }
+  }, [api])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  useEffect(() => {
+    if (current) return
+    setCurrent(projects.length ? projectFromRow(projects[0]) : blankProject())
+  }, [projects, current])
+
+  useEffect(() => {
+    if (!current) return
+    const t = setTimeout(async () => {
+      try {
+        const d = await api.post('/api/compose/render', {
+          name: current.name || 'project',
+          model: current.model,
+        })
+        if (d?.error) {
+          setPreviewErr(d.message || 'Project is not valid yet.')
+          setYaml('')
+        } else {
+          setYaml(d?.yaml || '')
+          setPreviewErr('')
+        }
+      } catch {
+        setPreviewErr('Could not render the preview.')
+      }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [api, current])
+
+  function change(patch) {
+    setCurrent((c) => (c ? { ...c, ...patch } : c))
+  }
+
+  function updateService(index, fn) {
+    setCurrent((c) => {
+      if (!c) return c
+      return {
+        ...c,
+        model: {
+          ...c.model,
+          services: c.model.services.map((s, i) => (i === index ? fn(s) : s)),
+        },
+      }
+    })
+  }
+
+  function addService() {
+    setCurrent((c) => {
+      if (!c) return c
+      const used = new Set(c.model.services.map((s) => s.name))
+      let n = c.model.services.length + 1
+      while (used.has('service' + n)) n += 1
+      return {
+        ...c,
+        model: { ...c.model, services: [...c.model.services, newService('service' + n)] },
+      }
+    })
+  }
+
+  function removeService(index) {
+    setCurrent((c) =>
+      c
+        ? { ...c, model: { ...c.model, services: c.model.services.filter((_, i) => i !== index) } }
+        : c,
+    )
+  }
+
+  function startDrag(e, item) {
+    e.dataTransfer.setData('application/json', JSON.stringify(item))
+    e.dataTransfer.effectAllowed = 'copy'
+  }
+
+  function dropDefault(e, index) {
+    e.preventDefault()
+    setDragOver(-1)
+    let item
+    try {
+      item = JSON.parse(e.dataTransfer.getData('application/json'))
+    } catch {
+      return
+    }
+    if (!item || !item.kind) return
+    const def = item.definition || {}
+
+    updateService(index, (s) => {
+      const next = { ...s }
+      if (item.kind === 'bind_mount') {
+        if (def.source && def.target) {
+          const mode = def.mode ? ':' + def.mode : ''
+          next.volumes = [...new Set([...(s.volumes || []), `${def.source}:${def.target}${mode}`])]
+        }
+      } else if (item.kind === 'network') {
+        const network = def.network || item.name
+        if (network) next.networks = [...new Set([...(s.networks || []), network])]
+      } else if (item.kind === 'env_file') {
+        const keys = Array.isArray(def.keys) ? def.keys : []
+        const wanted = new Set(keys)
+        const have = new Set((s.environment || []).map((v) => v.key))
+        const existing = (s.environment || []).map((v) =>
+          wanted.has(v.key) ? { ...v, secret: true, value: null } : v,
+        )
+        const added = keys
+          .filter((k) => k && !have.has(k))
+          .map((k) => ({ key: k, value: null, secret: true }))
+        next.environment = [...existing, ...added]
+      }
+      return next
+    })
+    setMsg(`Applied "${item.name}" to the service.`)
+  }
+
+  async function save() {
+    if (!current || !current.name.trim()) {
+      setMsg('Give the project a name first (lowercase, digits, - or _).')
+      return null
+    }
+    setBusy(true)
+    setMsg('')
+    try {
+      const body = {
+        name: current.name.trim(),
+        description: current.description || null,
+        model: current.model,
+      }
+      const saved = current.id
+        ? await api.put(`/api/compose/projects/${current.id}`, body)
+        : await api.post('/api/compose/projects', body)
+      if (saved?.error) {
+        setMsg(saved.message || 'Could not save the project.')
+        return null
+      }
+      setCurrent(projectFromRow(saved))
+      await load()
+      setMsg('Project saved.')
+      return saved
+    } catch {
+      setMsg('Could not save the project.')
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function publish() {
+    const saved = await save()
+    if (!saved) return
+    setBusy(true)
+    try {
+      const published = await api.post(`/api/compose/projects/${saved.id}/publish`, {})
+      if (published?.error) {
+        setMsg(published.message || 'Publish failed.')
+        return
+      }
+      setCurrent(projectFromRow(published))
+      await load()
+      setMsg('Published to ' + (published.published_path || 'the compose folder') + '.')
+    } catch {
+      setMsg('Publish failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeProject() {
+    if (!current?.id) return
+    if (!window.confirm(`Delete the saved project "${current.name}"? The published YAML stays on disk.`)) {
+      return
+    }
+    try {
+      const id = current.id
+      await api.del('/api/compose/projects/' + id)
+      setProjects((ps) => ps.filter((p) => p.id !== id))
+      setCurrent(blankProject())
+      await load()
+      setMsg('Project deleted.')
+    } catch {
+      setMsg('Could not delete the project.')
+    }
+  }
+
+  async function addDefault(e) {
+    e.preventDefault()
+    setMsg('')
+    const definition =
+      defForm.kind === 'bind_mount'
+        ? {
+            source: defForm.source.trim(),
+            target: defForm.target.trim(),
+            mode: defForm.mode.trim() || 'rw',
+          }
+        : defForm.kind === 'network'
+          ? { network: defForm.name.trim() }
+          : {
+              keys: defForm.keys
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean),
+            }
+    try {
+      const r = await api.post('/api/compose/defaults', {
+        kind: defForm.kind,
+        name: defForm.name.trim(),
+        definition,
+      })
+      if (r?.error) {
+        setMsg(r.message || 'Could not save the default.')
+        return
+      }
+      setDefForm({ kind: defForm.kind, name: '', source: '', target: '', mode: 'rw', keys: '' })
+      await load()
+      setMsg('Palette default saved.')
+    } catch {
+      setMsg('Could not save the default.')
+    }
+  }
+
+  async function removeDefault(id) {
+    try {
+      await api.del('/api/compose/defaults/' + id)
+      await load()
+    } catch {
+      setMsg('Could not remove the default.')
+    }
+  }
+
+  if (!current) {
+    return (
+      <section className="section">
+        <h2>🧩 COMPOSE BUILDER</h2>
+        <div className="muted">Loading…</div>
+      </section>
+    )
+  }
+
+  return (
+    <>
+      <section className="section highlight">
+        <h2>🧩 DOCKER COMPOSE BUILDER</h2>
+        <div className="compose-toolbar">
+          <select
+            value={current.id ?? ''}
+            onChange={(e) => {
+              const id = Number(e.target.value)
+              const row = projects.find((p) => p.id === id)
+              setCurrent(row ? projectFromRow(row) : blankProject())
+            }}
+          >
+            <option value="">— NEW PROJECT —</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <input
+            value={current.name}
+            onChange={(e) => change({ name: e.target.value })}
+            placeholder="PROJECT NAME (lowercase-slug)"
+          />
+          <input
+            value={current.description}
+            onChange={(e) => change({ description: e.target.value })}
+            placeholder="DESCRIPTION (OPTIONAL)"
+          />
+          <button type="button" onClick={save} disabled={busy}>
+            💾 SAVE
+          </button>
+          <button type="button" onClick={publish} disabled={busy}>
+            🚀 PUBLISH
+          </button>
+          {current.id ? (
+            <button type="button" className="link danger" onClick={removeProject} disabled={busy}>
+              DELETE
+            </button>
+          ) : null}
+        </div>
+        {msg ? <div className="notice">{msg}</div> : null}
+      </section>
+
+      <div className="compose-layout">
+        <section className="section">
+          <h2>🎨 SAVED DEFAULTS</h2>
+          <div className="compose-palette">
+            {defaults.length ? (
+              defaults.map((d) => (
+                <div
+                  key={d.id}
+                  className="chip-drag"
+                  draggable
+                  onDragStart={(e) => startDrag(e, d)}
+                  title="Drag onto a service card"
+                >
+                  <div>
+                    {d.name} <span className="small muted">({d.kind.replace('_', ' ')})</span>
+                  </div>
+                  <button type="button" className="link danger" onClick={() => removeDefault(d.id)}>
+                    REMOVE
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="muted small">
+                No defaults yet. Add bind mounts, networks, or env keys below.
+              </div>
+            )}
+          </div>
+
+          <form className="form-grid" onSubmit={addDefault} style={{ marginTop: 12 }}>
+            <label>
+              KIND
+              <select
+                value={defForm.kind}
+                onChange={(e) => setDefForm({ ...defForm, kind: e.target.value })}
+              >
+                <option value="bind_mount">BIND MOUNT</option>
+                <option value="network">NETWORK</option>
+                <option value="env_file">ENV FILE KEYS</option>
+              </select>
+            </label>
+            <label>
+              NAME
+              <input
+                value={defForm.name}
+                onChange={(e) => setDefForm({ ...defForm, name: e.target.value })}
+                placeholder={defForm.kind === 'network' ? 'proxy' : 'Media bind'}
+              />
+            </label>
+            {defForm.kind === 'bind_mount' ? (
+              <>
+                <label>
+                  HOST PATH
+                  <input
+                    value={defForm.source}
+                    onChange={(e) => setDefForm({ ...defForm, source: e.target.value })}
+                    placeholder="/srv/media"
+                  />
+                </label>
+                <label>
+                  CONTAINER PATH
+                  <input
+                    value={defForm.target}
+                    onChange={(e) => setDefForm({ ...defForm, target: e.target.value })}
+                    placeholder="/media"
+                  />
+                </label>
+                <label>
+                  MODE
+                  <select
+                    value={defForm.mode}
+                    onChange={(e) => setDefForm({ ...defForm, mode: e.target.value })}
+                  >
+                    <option value="rw">rw</option>
+                    <option value="ro">ro</option>
+                  </select>
+                </label>
+              </>
+            ) : null}
+            {defForm.kind === 'env_file' ? (
+              <label>
+                KEYS (COMMA SEPARATED)
+                <input
+                  value={defForm.keys}
+                  onChange={(e) => setDefForm({ ...defForm, keys: e.target.value })}
+                  placeholder="API_KEY, DB_PASSWORD"
+                />
+              </label>
+            ) : null}
+            <button type="submit">+ SAVE DEFAULT</button>
+          </form>
+
+          <h2 style={{ marginTop: 16 }}>📦 PUBLISHED FILES</h2>
+          <div className="muted small">{composeDir || 'COMPOSE_DIR'}</div>
+          <div className="compose-palette" style={{ marginTop: 6 }}>
+            {files.length ? (
+              files.map((f) => (
+                <div key={f.name} className="published-file">
+                  <b>{f.name}</b>
+                  <span className="small muted">{Math.max(1, Math.round(f.size / 1024))} KB</span>
+                </div>
+              ))
+            ) : (
+              <div className="muted small">Nothing published yet.</div>
+            )}
+          </div>
+        </section>
+
+        <section className="section">
+          <div className="rowhead">
+            <h2>🧱 SERVICES</h2>
+            <button type="button" className="mini" onClick={addService}>
+              + ADD SERVICE
+            </button>
+          </div>
+          {current.model.services.length ? (
+            current.model.services.map((s, i) => (
+              <div
+                key={i}
+                className={'service-card ' + (dragOver === i ? 'drag-over' : '')}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  if (dragOver !== i) setDragOver(i)
+                }}
+                onDragLeave={() => setDragOver(-1)}
+                onDrop={(e) => dropDefault(e, i)}
+              >
+                <div className="service-head">
+                  <b>{s.name || 'service'}</b>
+                  <button type="button" className="link danger" onClick={() => removeService(i)}>
+                    REMOVE
+                  </button>
+                </div>
+                <div className="service-grid">
+                  <label>
+                    SERVICE NAME
+                    <input
+                      value={s.name}
+                      onChange={(e) => updateService(i, (x) => ({ ...x, name: e.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    IMAGE
+                    <input
+                      value={s.image || ''}
+                      onChange={(e) =>
+                        updateService(i, (x) => ({ ...x, image: e.target.value || null }))
+                      }
+                      placeholder="nginx:latest"
+                    />
+                  </label>
+                  <label>
+                    BUILD PATH (OPTIONAL)
+                    <input
+                      value={s.build || ''}
+                      onChange={(e) =>
+                        updateService(i, (x) => ({ ...x, build: e.target.value || null }))
+                      }
+                      placeholder="./app"
+                    />
+                  </label>
+                  <label>
+                    RESTART
+                    <select
+                      value={s.restart || ''}
+                      onChange={(e) =>
+                        updateService(i, (x) => ({ ...x, restart: e.target.value || null }))
+                      }
+                    >
+                      <option value="unless-stopped">unless-stopped</option>
+                      <option value="always">always</option>
+                      <option value="on-failure">on-failure</option>
+                      <option value="no">no</option>
+                    </select>
+                  </label>
+                  <label className="full">
+                    PORTS (ONE PER LINE)
+                    <textarea
+                      value={fromLines(s.ports)}
+                      onChange={(e) =>
+                        updateService(i, (x) => ({ ...x, ports: toLines(e.target.value) }))
+                      }
+                      placeholder="8080:80"
+                    />
+                  </label>
+                  <label className="full">
+                    VOLUMES (ONE PER LINE)
+                    <textarea
+                      value={fromLines(s.volumes)}
+                      onChange={(e) =>
+                        updateService(i, (x) => ({ ...x, volumes: toLines(e.target.value) }))
+                      }
+                      placeholder="/srv/data:/data"
+                    />
+                  </label>
+                  <label className="full">
+                    NETWORKS (ONE PER LINE)
+                    <textarea
+                      value={fromLines(s.networks)}
+                      onChange={(e) =>
+                        updateService(i, (x) => ({ ...x, networks: toLines(e.target.value) }))
+                      }
+                      placeholder="proxy"
+                    />
+                  </label>
+                  <label className="full">
+                    DEPENDS ON (ONE PER LINE)
+                    <textarea
+                      value={fromLines(s.depends_on)}
+                      onChange={(e) =>
+                        updateService(i, (x) => ({ ...x, depends_on: toLines(e.target.value) }))
+                      }
+                    />
+                  </label>
+                  <label className="full">
+                    ENVIRONMENT (KEY=VALUE PER LINE)
+                    <textarea
+                      value={envToText(s.environment)}
+                      onChange={(e) =>
+                        updateService(i, (x) => ({
+                          ...x,
+                          environment: textToEnv(e.target.value, x.environment),
+                        }))
+                      }
+                      placeholder="TZ=UTC"
+                    />
+                  </label>
+                  <label className="full">
+                    {'SECRET KEYS (COMMA SEPARATED → ${KEY} + .env)'}
+                    <input
+                      value={secretKeysOf(s.environment).join(', ')}
+                      onChange={(e) =>
+                        updateService(i, (x) => ({
+                          ...x,
+                          environment: applySecrets(x.environment, e.target.value),
+                        }))
+                      }
+                      placeholder="API_KEY, DB_PASSWORD"
+                    />
+                  </label>
+                  <label className="full">
+                    COMMAND (OPTIONAL)
+                    <input
+                      value={s.command || ''}
+                      onChange={(e) =>
+                        updateService(i, (x) => ({ ...x, command: e.target.value || null }))
+                      }
+                    />
+                  </label>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="muted">Add a service to begin, or drag a saved default here.</div>
+          )}
+        </section>
+
+        <section className="section">
+          <h2>📄 LIVE YAML</h2>
+          {previewErr ? <div className="compose-err">{previewErr}</div> : null}
+          <pre className="yaml-preview">
+            {yaml || '# Add at least one valid service to see the YAML.'}
+          </pre>
+        </section>
+      </div>
+    </>
+  )
+}
+
 /* ── Users ───────────────────────────────────────────────────────────────── */
 
 function Users({ api }) {
@@ -1609,6 +2274,24 @@ const SETUP = [
     usage: ['Downloads tab', 'Discord /download <url>', 'Telegram /download <url>'],
   },
   {
+    key: 'compose',
+    icon: '🧩',
+    title: 'COMPOSE BUILDER',
+    blurb:
+      'Build compose projects visually and publish them for Dockhand (or any watcher) to pick up.',
+    env: [
+      ['COMPOSE_DIR', 'Container folder published files are written to (default /compose).'],
+      ['COMPOSE_HOST_PATH', 'Host folder Dockhand watches; mounted at /compose.'],
+    ],
+    steps: [
+      'Set COMPOSE_HOST_PATH to the folder Dockhand reads, then redeploy.',
+      'On the server: mkdir -p <path> && chown 10001:10001 <path>.',
+      'Open the COMPOSE tab → build/drag defaults → SAVE → PUBLISH.',
+      'Published <name>.yml + <name>.env appear in the folder (secrets stay in .env).',
+    ],
+    usage: ['COMPOSE tab', 'Drag saved bind mounts / networks / env keys', 'Publish for Dockhand'],
+  },
+  {
     key: 'telegram',
     icon: '✉️',
     title: 'TELEGRAM BOT',
@@ -1672,6 +2355,8 @@ function statusFor(key, st) {
       return st.downloads
         ? { ok: true, text: `${st.downloads.done} DONE · ${st.downloads.active} ACTIVE` }
         : null
+    case 'compose':
+      return st.compose ? { ok: true, text: 'READY' } : null
     case 'music':
       return { ok: null, text: 'CHECK MOUNT' }
     case 'deploy':

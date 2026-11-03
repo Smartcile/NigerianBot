@@ -17,6 +17,9 @@ node_modules/
 dashboard/build/
 dashboard/dist/
 
+# Agent scratch files
+.agent/
+
 # Editor / OS
 .idea/
 .vscode/

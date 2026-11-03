@@ -79,6 +79,10 @@ all data/actions are real).
 - ✅ **Telegram panel** — config status, notify chat id, and subscribers.
 - ✅ **Setup page** — per-service env vars, connection steps, and usage, with live
   status pills read from `GET /api/setup/status` (presence only; no secrets).
+- ✅ **Compose builder** — save projects as a typed model, drag reusable bind
+  mounts/networks/env keys onto service cards, preview rendered YAML, and publish
+  `<name>.yml` + `<name>.env` into `COMPOSE_DIR` (point `COMPOSE_HOST_PATH` at the
+  folder Dockhand watches). Secrets are never stored — only `${KEY}` references.
 - ⬜ **Media-request approvals** — pending `/sonarr`/`/radarr` requests an admin
   approves (currently adds immediately).
 - ⬜ **Voice control** — see the voice pool, who's playing what, transport controls.

@@ -663,3 +663,106 @@ ol.steps li { margin-bottom: 4px; }
   color: var(--muted);
   border-top: 1px solid var(--gold-dark);
 }
+
+/* ── Compose builder ────────────────────────────────────────────────────── */
+.compose-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.compose-toolbar input,
+.compose-toolbar select {
+  margin-bottom: 0;
+  flex: 1 1 180px;
+}
+.compose-toolbar button {
+  white-space: nowrap;
+}
+.compose-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.compose-layout > .section { margin-bottom: 0; }
+@media (max-width: 1100px) {
+  .compose-layout { grid-template-columns: 1fr; }
+}
+.compose-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chip-drag {
+  background: var(--paper);
+  color: var(--ink);
+  border: 2px dashed var(--gold-dark);
+  padding: 6px 8px;
+  cursor: grab;
+  font-size: 12px;
+  font-weight: bold;
+}
+.chip-drag:active { cursor: grabbing; }
+.service-card {
+  background: var(--paper);
+  color: var(--ink);
+  border: 2px solid var(--gold-dark);
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.service-card.drag-over {
+  border-color: var(--green);
+  box-shadow: 0 0 0 2px var(--green) inset;
+}
+.service-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.service-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.service-grid label,
+.service-card label {
+  display: block;
+  font-size: 10px;
+  font-weight: 900;
+  color: var(--gold-deep);
+  letter-spacing: 0.5px;
+}
+.service-grid .full { grid-column: 1 / -1; }
+.service-card textarea {
+  min-height: 52px;
+  font-family: 'Courier New', monospace;
+}
+.yaml-preview {
+  background: #04150c;
+  color: #b6f2c8;
+  border: 2px solid var(--gold-dark);
+  padding: 10px;
+  overflow: auto;
+  max-height: 70vh;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  white-space: pre;
+}
+.compose-err {
+  color: var(--red);
+  font-weight: bold;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.published-file {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px dashed var(--gold-dark);
+  padding: 4px 0;
+  font-size: 12px;
+}

@@ -15,6 +15,7 @@
 #   DOWNLOADS_HOST_PATH (optional) host folder shared with Sonarr/Radarr for imports
 #   SONARR_IMPORT_PATH / RADARR_IMPORT_PATH (optional) how those apps see /downloads
 #   MUSIC_HOST_PATH    (optional)  path to your music folder on the server
+#   COMPOSE_HOST_PATH  (optional)  host folder Dockhand watches for compose YAML
 #
 # Images are built by GitHub Actions and published to GHCR, so Portainer just
 # PULLS them (never use compose `build:` in Portainer).
@@ -68,6 +69,9 @@ services:
       API_KEY: ${API_KEY:-}
       DASHBOARD_DIR: /app/static
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      # ── Compose builder ────────────────────────────────────────────────────
+      # Published projects are written here as <name>.yml + <name>.env.
+      COMPOSE_DIR: /compose
       # ── Music ──────────────────────────────────────────────────────────────
       MUSIC_MOUNT_PATH: /music
       # ── Downloads / worker ─────────────────────────────────────────────────
@@ -101,6 +105,9 @@ services:
       - ${DOWNLOADS_HOST_PATH:-./downloads}:/downloads
       # yt-dlp cookies uploaded from the web GUI (Downloads tab).
       - cookies:/cookies
+      # Compose builder output. Point COMPOSE_HOST_PATH at the folder Dockhand
+      # watches, then:  mkdir -p <path> && chown 10001:10001 <path>
+      - ${COMPOSE_HOST_PATH:-./compose}:/compose
 
 volumes:
   pgdata:

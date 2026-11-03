@@ -64,8 +64,8 @@ COPY --from=frontend /dash/dist /app/static
 # Seed the downloads + cookies dirs owned by appuser so FRESH named volumes
 # inherit write permission for the non-root user (cookies are uploaded via the GUI).
 RUN useradd --create-home --uid 10001 appuser \
-    && mkdir -p /downloads /cookies \
-    && chown 10001:10001 /downloads /cookies
+    && mkdir -p /downloads /cookies /compose \
+    && chown 10001:10001 /downloads /cookies /compose
 USER appuser
 
 EXPOSE 8000

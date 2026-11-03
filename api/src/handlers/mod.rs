@@ -1,5 +1,6 @@
 //! HTTP request handlers.
 
+pub mod compose;
 pub mod downloads;
 pub mod media;
 pub mod schedules;

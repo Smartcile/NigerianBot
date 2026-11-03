@@ -4,6 +4,7 @@
 //! `bot`, `api`, `scheduler`, and `worker` crates don't each reimplement them.
 
 pub mod arr;
+pub mod compose;
 pub mod config;
 pub mod db;
 pub mod media;

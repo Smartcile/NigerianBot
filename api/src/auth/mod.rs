@@ -8,7 +8,7 @@
 
 use std::future::{ready, Ready};
 
-use actix_web::error::ErrorUnauthorized;
+use actix_web::error::{ErrorForbidden, ErrorUnauthorized};
 use actix_web::{dev::Payload, web, FromRequest, HttpRequest};
 use anyhow::{Context, Result};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
@@ -146,24 +146,46 @@ impl FromRequest for AuthUser {
     type Future = Ready<Result<Self, Self::Error>>;
 
     fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
-        let state = req.app_data::<web::Data<AppState>>().cloned();
+        ready(authenticate(req).map(|claims| AuthUser { claims }))
+    }
+}
 
-        let result = (|| {
-            let state = state.ok_or_else(|| ErrorUnauthorized("server misconfigured"))?;
-            let header = req
-                .headers()
-                .get("Authorization")
-                .and_then(|h| h.to_str().ok())
-                .ok_or_else(|| ErrorUnauthorized("missing Authorization header"))?;
-            let token = header
-                .strip_prefix("Bearer ")
-                .ok_or_else(|| ErrorUnauthorized("expected a Bearer token"))?
-                .trim();
-            let claims = verify_token(&state.config.jwt_secret, token)
-                .map_err(|_| ErrorUnauthorized("invalid or expired token"))?;
-            Ok(AuthUser { claims })
-        })();
+/// Shared bearer-token check used by both extractors.
+fn authenticate(req: &HttpRequest) -> Result<Claims, actix_web::Error> {
+    let state = req
+        .app_data::<web::Data<AppState>>()
+        .cloned()
+        .ok_or_else(|| ErrorUnauthorized("server misconfigured"))?;
+    let header = req
+        .headers()
+        .get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .ok_or_else(|| ErrorUnauthorized("missing Authorization header"))?;
+    let token = header
+        .strip_prefix("Bearer ")
+        .ok_or_else(|| ErrorUnauthorized("expected a Bearer token"))?
+        .trim();
+    verify_token(&state.config.jwt_secret, token)
+        .map_err(|_| ErrorUnauthorized("invalid or expired token"))
+}
 
-        ready(result)
+/// Extractor that requires a valid bearer token **and** the `admin` role.
+/// Use it on mutations; reads only need [`AuthUser`].
+pub struct AdminUser {
+    pub claims: Claims,
+}
+
+impl FromRequest for AdminUser {
+    type Error = actix_web::Error;
+    type Future = Ready<Result<Self, Self::Error>>;
+
+    fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
+        ready(authenticate(req).and_then(|claims| {
+            if claims.role == "admin" {
+                Ok(AdminUser { claims })
+            } else {
+                Err(ErrorForbidden("admin role required"))
+            }
+        }))
     }
 }

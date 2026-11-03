@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react'
+import { CopyContext, copyFor, useCopy } from './copy'
 
 const TOKEN_KEY = 'nb_token'
 const CHANGE_KEY = 'nb_must_change'
@@ -34,9 +35,14 @@ export default function App() {
     setMustChange(false)
   }, [])
 
-  if (!token) return <Login onLogin={login} />
-  if (mustChange) return <ForceChangePin token={token} onDone={pinChanged} onLogout={logout} />
-  return <Shell token={token} onLogout={logout} theme={theme} onTheme={setTheme} />
+  const copy = useMemo(() => copyFor(theme), [theme])
+
+  let screen
+  if (!token) screen = <Login onLogin={login} />
+  else if (mustChange) screen = <ForceChangePin token={token} onDone={pinChanged} onLogout={logout} />
+  else screen = <Shell token={token} onLogout={logout} theme={theme} onTheme={setTheme} />
+
+  return <CopyContext.Provider value={copy}>{screen}</CopyContext.Provider>
 }
 
 /* ── API helper ──────────────────────────────────────────────────────────── */
@@ -97,6 +103,7 @@ function makeApi(token, onLogout) {
 /* ── Login ───────────────────────────────────────────────────────────────── */
 
 function Login({ onLogin }) {
+  const copy = useCopy()
   const [pin, setPin] = useState('')
   const [err, setErr] = useState('')
 
@@ -110,50 +117,41 @@ function Login({ onLogin }) {
         body: JSON.stringify({ pin }),
       })
       if (r.status === 401) {
-        setErr('WRONG PIN. THIS TRANSACTION IS HIGHLY CONFIDENTIAL.')
+        setErr(copy.loginErrorPin)
         return
       }
       if (!r.ok) {
-        setErr('SIGN-IN FAILED. PLEASE TRY AGAIN.')
+        setErr(copy.loginErrorFailed)
         return
       }
       const data = await r.json()
       onLogin(data.token, data.must_change_pin)
     } catch {
-      setErr('SERVER UNREACHABLE. PLEASE TRY AGAIN.')
+      setErr(copy.loginErrorServer)
     }
   }
 
   return (
     <div className="login">
-      <div className="popup-note">🔒 100% GUARANTEED · NO RISK · GOD BLESS</div>
+      <div className="popup-note">{copy.loginBadge}</div>
       <form className="card" onSubmit={submit}>
         <div className="seal-wrap">
           <Seal />
         </div>
-        <h1>🇳🇬 NIGERIANBOT HEADQUARTERS</h1>
-        <p className="scam-sub">
-          STRICTLY CONFIDENTIAL BUSINESS PROPOSAL — KIND ATTENTION: DEAR FRIEND
-        </p>
-        <p className="letter">
-          I am the system administrator of a late <b>Honourable Controller</b> and I have the
-          privilege to move the sum of <b>US$45,000,000.00</b> (FOURTY FIVE MILLION UNITED STATES
-          DOLLARS) into your trust account. To proceed, kindly furnish the undermentioned secret
-          PIN.
-        </p>
+        <h1>{copy.loginTitle}</h1>
+        <p className="scam-sub">{copy.loginSub}</p>
+        <p className="letter">{copy.loginLetter}</p>
         <input
           type="password"
           inputMode="numeric"
           maxLength={8}
-          placeholder="ENTER YOUR PIN (DEFAULT: 1234)"
+          placeholder={copy.loginPlaceholder}
           value={pin}
           onChange={(e) => setPin(e.target.value)}
         />
-        <button type="submit">🤑 CLAIM ACCESS NOW!!!</button>
+        <button type="submit">{copy.loginButton}</button>
         <div className="err">{err}</div>
-        <div className="fineprint">
-          First time? Use PIN <b>1234</b>; you'll be asked to choose a new one.
-        </div>
+        <div className="fineprint">{copy.loginFineprint}</div>
       </form>
     </div>
   )
@@ -161,6 +159,7 @@ function Login({ onLogin }) {
 
 /* Forced PIN change on first sign-in. */
 function ForceChangePin({ token, onDone, onLogout }) {
+  const copy = useCopy()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -171,7 +170,7 @@ function ForceChangePin({ token, onDone, onLogout }) {
     e.preventDefault()
     setErr('')
     if (next !== confirm) {
-      setErr('THE TWO PINS DO NOT MATCH.')
+      setErr(copy.errPinMismatch)
       return
     }
     setBusy(true)
@@ -182,41 +181,37 @@ function ForceChangePin({ token, onDone, onLogout }) {
         body: JSON.stringify({ current_pin: current, new_pin: next }),
       })
       if (r.status === 401) {
-        setErr('CURRENT PIN IS WRONG.')
+        setErr(copy.errCurrentPin)
         setBusy(false)
         return
       }
       if (!r.ok) {
-        setErr('PIN MUST BE 4-8 DIGITS.')
+        setErr(copy.errWeakPin)
         setBusy(false)
         return
       }
       onDone()
     } catch {
-      setErr('COULD NOT REACH THE SERVER.')
+      setErr(copy.errServer)
       setBusy(false)
     }
   }
 
   return (
     <div className="login">
-      <div className="popup-note">🔐 SECURITY NOTICE</div>
+      <div className="popup-note">{copy.changeBadge}</div>
       <form className="card" onSubmit={submit}>
         <div className="seal-wrap">
           <Seal />
         </div>
-        <h1>🇳🇬 CHANGE YOUR SECRET PIN</h1>
-        <p className="scam-sub">FIRST SIGN-IN — PROTECT YOUR US$45,000,000.00</p>
-        <p className="letter">
-          For your own protection, kindly replace the default PIN (<b>1234</b>) with a secret
-          4-8 digit code that only you know. Do not disclose it to any person, including the
-          Controller.
-        </p>
+        <h1>{copy.changeTitle}</h1>
+        <p className="scam-sub">{copy.changeSub}</p>
+        <p className="letter">{copy.changeLetter}</p>
         <input
           type="password"
           inputMode="numeric"
           maxLength={8}
-          placeholder="CURRENT PIN (1234)"
+          placeholder="Current PIN (1234)"
           value={current}
           onChange={(e) => setCurrent(e.target.value)}
         />
@@ -224,7 +219,7 @@ function ForceChangePin({ token, onDone, onLogout }) {
           type="password"
           inputMode="numeric"
           maxLength={8}
-          placeholder="NEW PIN (4-8 DIGITS)"
+          placeholder="New PIN (4-8 digits)"
           value={next}
           onChange={(e) => setNext(e.target.value)}
         />
@@ -232,12 +227,12 @@ function ForceChangePin({ token, onDone, onLogout }) {
           type="password"
           inputMode="numeric"
           maxLength={8}
-          placeholder="CONFIRM NEW PIN"
+          placeholder="Confirm new PIN"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
         />
         <button type="submit" disabled={busy}>
-          {busy ? 'SAVING…' : '🔐 SAVE NEW PIN'}
+          {busy ? copy.saving : copy.savePin}
         </button>
         <div className="err">{err}</div>
         <div className="fineprint">
@@ -252,21 +247,21 @@ function ForceChangePin({ token, onDone, onLogout }) {
 
 /* ── Shell ───────────────────────────────────────────────────────────────── */
 
-const TABS = [
-  ['overview', '💰 CLAIM FUNDS'],
-  ['downloads', '📥 CARGO'],
-  ['media', '🎬 BUSINESS LOTS'],
-  ['schedules', '⏰ PAYMENT PLAN'],
-  ['compose', '🧩 COMPOSE'],
-  ['users', '👑 HONOURABLES'],
-  ['telegram', '✉️ CABLEGRAM'],
-  ['setup', '📖 SETUP'],
-]
-
 function Shell({ token, onLogout, theme, onTheme }) {
+  const copy = useCopy()
   const [tab, setTab] = useState('overview')
   const [popup, setPopup] = useState(true)
   const api = useMemo(() => makeApi(token, onLogout), [token, onLogout])
+  const tabs = [
+    ['overview', copy.tabOverview],
+    ['downloads', copy.tabDownloads],
+    ['media', copy.tabMedia],
+    ['schedules', copy.tabSchedules],
+    ['compose', copy.tabCompose],
+    ['users', copy.tabUsers],
+    ['telegram', copy.tabTelegram],
+    ['setup', copy.tabSetup],
+  ]
 
   return (
     <>
@@ -291,18 +286,18 @@ function Shell({ token, onLogout, theme, onTheme }) {
         <div className="brand">
           <span className="flag">🇳🇬</span>
           <span>
-            NIGERIANBOT&nbsp;HEADQUARTERS
-            <small>“Serving Honourable People Since 419 BC”</small>
+            {copy.brand}
+            <small>{copy.brandSub}</small>
           </span>
         </div>
         <div className="conf">★ CONFIDENTIAL ★</div>
         <button className="logout" onClick={onLogout}>
-          LOG OUT
+          {copy.logout}
         </button>
       </header>
 
       <nav className="tabs">
-        {TABS.map(([id, label]) => (
+        {tabs.map(([id, label]) => (
           <button
             key={id}
             className={'tab ' + (tab === id ? 'active' : '')}
@@ -324,10 +319,7 @@ function Shell({ token, onLogout, theme, onTheme }) {
         {tab === 'setup' && <Setup api={api} theme={theme} onTheme={onTheme} />}
       </main>
 
-      <footer className="foot">
-        ⚠️ STRICTLY CONFIDENTIAL — This document must not be disclosed. Kindly send processing
-        fee of <b>US$500</b> to release your funds. GOD BLESS. — The Management
-      </footer>
+      <footer className="foot">{copy.footer}</footer>
     </>
   )
 }
@@ -335,6 +327,7 @@ function Shell({ token, onLogout, theme, onTheme }) {
 /* ── Overview ────────────────────────────────────────────────────────────── */
 
 function Overview({ api }) {
+  const copy = useCopy()
   const [status, setStatus] = useState(null)
   const [stats, setStats] = useState(null)
   const [logs, setLogs] = useState([])
@@ -369,18 +362,25 @@ function Overview({ api }) {
   return (
     <>
       <div className="grid">
-        <Stat label="TOTAL TRANSACTIONS" value={stats?.total ?? '—'} />
-        <Stat label="LAST 24 HOURS" value={stats?.last_24h ?? '—'} />
+        <Stat label={copy.totalCommands} value={stats?.total ?? '—'} />
+        <Stat label={copy.last24h} value={stats?.last_24h ?? '—'} />
         <Stat
-          label="VAULT (DATABASE)"
-          value={<span className={'pill ' + (dbOk ? 'done' : 'failed')}>{dbOk ? 'SECURE' : 'BREACHED'}</span>}
+          label={copy.database}
+          value={
+            <span className={'pill ' + (dbOk ? 'done' : 'failed')}>
+              {dbOk ? copy.dbConnected : copy.dbDown}
+            </span>
+          }
         />
-        <Stat label="FUNDS ON HOLD" value="$45,000,000" />
+        <Stat
+          label={copy.commandsLogged}
+          value={copy.isClassic ? status?.commands_logged ?? '—' : '$45,000,000'}
+        />
       </div>
 
       <div className="two-col">
         <section className="section">
-          <h2>💵 TOP COMMANDS (MONEY MOVERS)</h2>
+          <h2>{copy.topCommands}</h2>
           {top.length ? (
             top.map((t) => (
               <div className="bar-row" key={t.command}>
@@ -394,7 +394,7 @@ function Overview({ api }) {
               </div>
             ))
           ) : (
-            <div className="muted">No transactions yet, my friend.</div>
+            <div className="muted">{copy.noCommands}</div>
           )}
         </section>
 
@@ -402,13 +402,13 @@ function Overview({ api }) {
       </div>
 
       <section className="section">
-        <h2>📜 RECENT TRANSACTIONS (AUDIT TRAIL)</h2>
+        <h2>{copy.recentActivity}</h2>
         <table>
           <thead>
             <tr>
               <th>TIME</th>
-              <th>HONOURABLE</th>
-              <th>WIRE REFERENCE</th>
+              <th>{copy.thUser}</th>
+              <th>{copy.thCommand}</th>
             </tr>
           </thead>
           <tbody>
@@ -425,7 +425,7 @@ function Overview({ api }) {
             ) : (
               <tr>
                 <td colSpan="3" className="muted">
-                  No transactions yet.
+                  {copy.noActivity}
                 </td>
               </tr>
             )}
@@ -433,7 +433,9 @@ function Overview({ api }) {
         </table>
       </section>
 
-      <div className="updated">AUTO-REFRESH 10s · LAST SYNC {updated}</div>
+      <div className="updated">
+        {copy.autoRefresh} {updated}
+      </div>
     </>
   )
 }
@@ -441,6 +443,7 @@ function Overview({ api }) {
 /* ── Downloads ───────────────────────────────────────────────────────────── */
 
 function Downloads({ api }) {
+  const copy = useCopy()
   const [items, setItems] = useState([])
   const [url, setUrl] = useState('')
   const [saveAs, setSaveAs] = useState('')
@@ -476,12 +479,12 @@ function Downloads({ api }) {
         url: url.trim(),
         save_as: saveAs.trim() || null,
       })
-      setNote(row?.id ? `SUCCESS! Cargo #${row.id} is on the way.` : 'Submitted.')
+      setNote(row?.id ? copy.queuedNote(row.id) : copy.submitted)
       setUrl('')
       setSaveAs('')
       await refresh()
     } catch {
-      setNote('TRANSACTION FAILED. Kindly try again.')
+      setNote(copy.transactionFailed)
     }
     setBusy(false)
   }
@@ -498,11 +501,11 @@ function Downloads({ api }) {
     setBulkMsg('')
     try {
       const r = await api.post('/api/downloads/bulk', { urls: bulk })
-      setBulkMsg(`ADDED ${r?.added ?? 0}, SKIPPED ${r?.skipped ?? 0}.`)
+      setBulkMsg(copy.bulkResult(r?.added ?? 0, r?.skipped ?? 0))
       setBulk('')
       await refresh()
     } catch {
-      setBulkMsg('BULK IMPORT FAILED.')
+      setBulkMsg(copy.bulkFailed)
     }
     setBulkBusy(false)
   }
@@ -510,11 +513,11 @@ function Downloads({ api }) {
   return (
     <>
       <section className="section highlight">
-        <h2>📥 IMPORT CARGO (VIMEO / YOUTUBE / ANY URL)</h2>
+        <h2>{copy.addDownload}</h2>
         <form className="dlform" onSubmit={submit}>
           <input
             type="text"
-            placeholder="PASTE THE CARGO URL (VIMEO / YOUTUBE / TUBI / ANY)"
+            placeholder={copy.urlPlaceholder}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
           />
@@ -525,17 +528,17 @@ function Downloads({ api }) {
             onChange={(e) => setSaveAs(e.target.value)}
           />
           <button type="submit" disabled={busy}>
-            {busy ? 'SENDING…' : '💸 SHIP IT'}
+            {busy ? copy.sending : copy.download}
           </button>
         </form>
         <div className="fineprint">
-          A trusted agent (the worker) will collect the cargo and store it in the warehouse.
+          {copy.workerNote}
           {note ? <b> {note}</b> : null}
         </div>
       </section>
 
       <section className="section highlight">
-        <h2>📦 BULK IMPORT (SERIES LINK OR MANY URLS)</h2>
+        <h2>{copy.bulkImport}</h2>
         <form onSubmit={submitBulk}>
           <textarea
             rows={4}
@@ -546,12 +549,11 @@ function Downloads({ api }) {
             onChange={(e) => setBulk(e.target.value)}
           />
           <button type="submit" disabled={bulkBusy}>
-            {bulkBusy ? 'EXPANDING…' : '📥 EXPAND & QUEUE ALL'}
+            {bulkBusy ? copy.expanding : copy.expandQueue}
           </button>
         </form>
         <div className="fineprint">
-          Series/playlist links are expanded into individual episodes and queued; duplicates are
-          skipped.
+          {copy.bulkNote}
           {bulkMsg ? <b> {bulkMsg}</b> : null}
         </div>
       </section>
@@ -559,12 +561,12 @@ function Downloads({ api }) {
       <CookiesCard api={api} />
 
       <section className="section">
-        <h2>🚢 CARGO MANIFEST</h2>
+        <h2>{copy.downloads}</h2>
         <table>
           <thead>
             <tr>
               <th>TIME</th>
-              <th>CARGO</th>
+              <th>{copy.thItem}</th>
               <th>STATUS</th>
               <th>SIZE</th>
               <th></th>
@@ -600,16 +602,16 @@ function Downloads({ api }) {
                   <td className="row-actions">
                     {d.status === 'done' && d.file_path ? (
                       <a href={'/media/' + d.file_path} target="_blank" rel="noreferrer">
-                        COLLECT
+                        {copy.open}
                       </a>
                     ) : null}
                     {d.status === 'done' && d.file_path ? (
                       <button className="link" onClick={() => setImportFile(d.file_path)}>
-                        📥 IMPORT
+                        {copy.import}
                       </button>
                     ) : null}
                     <button className="link" onClick={() => remove(d.id)}>
-                      DESTROY
+                      {copy.destroy}
                     </button>
                   </td>
                 </tr>
@@ -617,7 +619,7 @@ function Downloads({ api }) {
             ) : (
               <tr>
                 <td colSpan="5" className="muted">
-                  No cargo yet.
+                  {copy.noDownloads}
                 </td>
               </tr>
             )}
@@ -634,6 +636,7 @@ function Downloads({ api }) {
 
 /* Link a finished download to a library item and import via Sonarr/Radarr. */
 function ImportModal({ api, file, onClose }) {
+  const copy = useCopy()
   const [service, setService] = useState('sonarr')
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -658,7 +661,7 @@ function ImportModal({ api, file, onClose }) {
       try {
         setData(await api.get(`/api/media/${svc}/manual-import?file=${encodeURIComponent(file)}`))
       } catch {
-        setMsg('COULD NOT REACH THE MEDIA SERVICE.')
+        setMsg(copy.couldNotReachMedia)
       }
       setLoading(false)
     },
@@ -695,9 +698,9 @@ function ImportModal({ api, file, onClose }) {
     setMsg('')
     try {
       await api.post(`/api/media/${service}/manual-import`, { import_mode: 'move', files })
-      setMsg('✅ IMPORT STARTED — the library will rename & move it per your settings.')
+      setMsg(copy.importStarted)
     } catch {
-      setMsg('IMPORT FAILED. CHECK THE MATCH AND TRY AGAIN.')
+      setMsg(copy.importFailed)
     }
     setBusy(false)
   }
@@ -706,11 +709,11 @@ function ImportModal({ api, file, onClose }) {
     if (!candidate) return
     const entry = entryFor(candidate)
     if (service === 'sonarr' && (!entry.seriesId || !entry.episodeIds.length)) {
-      setMsg("SONARR COULDN'T MATCH — LINK A SHOW/EPISODE BELOW.")
+      setMsg(copy.sonarrNoMatch)
       return
     }
     if (service === 'radarr' && !entry.movieId) {
-      setMsg("RADARR COULDN'T MATCH — SEARCH FOR THE MOVIE BELOW.")
+      setMsg(copy.radarrNoMatch)
       return
     }
     await doImport([entry])
@@ -723,7 +726,7 @@ function ImportModal({ api, file, onClose }) {
       const v = await api.get(`/api/media/${service}/search?term=${encodeURIComponent(linkTerm)}`)
       setLinkResults((v?.results || []).filter((r) => r.in_library))
     } catch {
-      setMsg('SEARCH FAILED.')
+      setMsg(copy.searchFailed)
     }
   }
 
@@ -742,7 +745,7 @@ function ImportModal({ api, file, onClose }) {
 
   async function importLinked() {
     if (!candidate || !chosen) {
-      setMsg('PICK A MATCH FIRST.')
+      setMsg(copy.pickMatch)
       return
     }
     const override =
@@ -750,7 +753,7 @@ function ImportModal({ api, file, onClose }) {
         ? { movieId: chosen.id }
         : { seriesId: chosen.id, episodeIds: episodeId ? [Number(episodeId)] : [] }
     if (service === 'sonarr' && !override.episodeIds.length) {
-      setMsg('PICK AN EPISODE.')
+      setMsg(copy.pickEpisode)
       return
     }
     await doImport([entryFor(candidate, override)])
@@ -778,7 +781,7 @@ function ImportModal({ api, file, onClose }) {
           ))}
         </div>
 
-        {loading ? <div className="muted">LOADING…</div> : null}
+        {loading ? <div className="muted">{copy.loading}</div> : null}
 
         {!loading && data && !candidate ? (
           <div className="notice">
@@ -792,18 +795,18 @@ function ImportModal({ api, file, onClose }) {
         {candidate ? (
           <>
             <div className="fineprint">
-              FILE: <code>{candidate.path || candidate.name}</code>
+              {copy.file} <code>{candidate.path || candidate.name}</code>
               {candidate.quality?.quality?.name ? (
                 <>
                   {' '}
-                  · QUALITY: <b>{candidate.quality.quality.name}</b>
+                  · {copy.quality} <b>{candidate.quality.quality.name}</b>
                 </>
               ) : null}
             </div>
 
             {service === 'sonarr' ? (
               <div className="fineprint">
-                MATCHED:{' '}
+                {copy.matched}{' '}
                 {candidate.series?.title ? <b>{candidate.series.title}</b> : '— none —'}{' '}
                 {candidate.episodes?.length
                   ? (candidate.episodes || [])
@@ -813,7 +816,7 @@ function ImportModal({ api, file, onClose }) {
               </div>
             ) : (
               <div className="fineprint">
-                MATCHED:{' '}
+                {copy.matched}{' '}
                 {candidate.movie?.title ? (
                   <b>
                     {candidate.movie.title} ({candidate.movie.year})
@@ -831,14 +834,13 @@ function ImportModal({ api, file, onClose }) {
             ) : null}
 
             <button onClick={importProvided} disabled={busy} style={{ marginTop: 8 }}>
-              ✅ IMPORT (USE THIS MATCH)
+              {copy.importUseMatch}
             </button>
 
             <hr />
 
             <div className="fineprint">
-              LINK TO A DIFFERENT {service === 'radarr' ? 'MOVIE' : 'SHOW / EPISODE'} IN YOUR
-              LIBRARY:
+              {copy.linkDifferent(service === 'radarr' ? 'movie' : 'show / episode')}
             </div>
             <form className="dlform" onSubmit={searchLink}>
               <input
@@ -846,7 +848,7 @@ function ImportModal({ api, file, onClose }) {
                 onChange={(e) => setLinkTerm(e.target.value)}
                 placeholder="Search your library"
               />
-              <button type="submit">🔎 SEARCH</button>
+              <button type="submit">{copy.search}</button>
             </form>
             <div className="chips">
               {linkResults.map((r) => (
@@ -866,7 +868,7 @@ function ImportModal({ api, file, onClose }) {
                 onChange={(e) => setEpisodeId(e.target.value)}
                 style={{ marginTop: 8 }}
               >
-                <option value="">— PICK EPISODE —</option>
+                <option value="">{copy.pickEpisodeOption}</option>
                 {episodes.map((e) => (
                   <option key={e.id} value={e.id}>
                     S{pad(e.seasonNumber)}E{pad(e.episodeNumber)} — {e.title}
@@ -877,7 +879,7 @@ function ImportModal({ api, file, onClose }) {
 
             {chosen ? (
               <button onClick={importLinked} disabled={busy} style={{ marginTop: 8 }}>
-                ✅ IMPORT INTO “{chosen.title}”
+                {copy.importInto(chosen.title)}
               </button>
             ) : null}
           </>
@@ -891,6 +893,7 @@ function ImportModal({ api, file, onClose }) {
 
 /* Login cookies for yt-dlp (Vimeo etc.). Uploaded here, not on the server. */
 function CookiesCard({ api }) {
+  const copy = useCopy()
   const [status, setStatus] = useState(null)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
@@ -912,7 +915,7 @@ function CookiesCard({ api }) {
     e.preventDefault()
     const file = fileRef.current?.files?.[0]
     if (!file) {
-      setMsg('CHOOSE A cookies.txt FILE FIRST.')
+      setMsg(copy.chooseCookies)
       return
     }
     setBusy(true)
@@ -920,24 +923,24 @@ function CookiesCard({ api }) {
     try {
       const text = await file.text()
       await api.postText('/api/downloads/cookies', text)
-      setMsg('COOKIES STORED. LOGIN-GATED DOWNLOADS SHOULD NOW WORK.')
+      setMsg(copy.cookiesStored)
       if (fileRef.current) fileRef.current.value = ''
       await refresh()
     } catch {
-      setMsg('UPLOAD FAILED — IS IT A NETSCAPE cookies.txt?')
+      setMsg(copy.cookiesUploadFailed)
     }
     setBusy(false)
   }
 
   async function remove() {
     await api.del('/api/downloads/cookies')
-    setMsg('COOKIES REMOVED.')
+    setMsg(copy.cookiesRemoved)
     await refresh()
   }
 
   return (
     <section className="section">
-      <h2>🍪 LOGIN COOKIES (VIMEO / PRIVATE SITES)</h2>
+      <h2>{copy.loginCookies}</h2>
       <p className="fineprint">
         Some videos (e.g. Vimeo) only download with a logged-in session. Export your cookies as
         a Netscape-format <code>cookies.txt</code> (a browser extension like “Get cookies.txt
@@ -946,19 +949,21 @@ function CookiesCard({ api }) {
       <form className="dlform" onSubmit={upload}>
         <input ref={fileRef} type="file" accept=".txt,text/plain" />
         <button type="submit" disabled={busy}>
-          {busy ? 'UPLOADING…' : '📤 UPLOAD COOKIES'}
+          {busy ? copy.uploading : copy.uploadCookies}
         </button>
       </form>
       <div className="fineprint">
-        STATUS:{' '}
+        {copy.status}{' '}
         {status?.present ? (
-          <span className="pill done">STORED · {fmtSize(status.size)}</span>
+          <span className="pill done">
+            {copy.stored} · {fmtSize(status.size)}
+          </span>
         ) : (
-          <span className="pill failed">NONE</span>
+          <span className="pill failed">{copy.none}</span>
         )}{' '}
         {status?.present ? (
           <button className="link danger" onClick={remove}>
-            REMOVE
+            {copy.remove}
           </button>
         ) : null}
       </div>
@@ -970,6 +975,7 @@ function CookiesCard({ api }) {
 /* ── Media (Sonarr / Radarr) ─────────────────────────────────────────────── */
 
 function Media({ api }) {
+  const copy = useCopy()
   const [service, setService] = useState('sonarr')
   const [status, setStatus] = useState(null)
   const [queue, setQueue] = useState(null)
@@ -994,7 +1000,7 @@ function Media({ api }) {
           if (id === reqId.current) setCalendar(v)
         }
       } catch {
-        if (id === reqId.current) setMsg('COULD NOT REACH THE BUSINESS PARTNER.')
+        if (id === reqId.current) setMsg(copy.couldNotReachPartner)
       }
     },
     [api, service],
@@ -1019,7 +1025,7 @@ function Media({ api }) {
       )
       setResults(v?.results || [])
     } catch {
-      setMsg('SEARCH FAILED.')
+      setMsg(copy.searchFailed)
     }
   }
 
@@ -1029,14 +1035,14 @@ function Media({ api }) {
       const r = await api.post(`/api/media/${service}/add`, { term: title })
       setMsg(
         r?.already
-          ? `“${r.title}” is ALREADY in the vault.`
+          ? copy.alreadyInLibrary(r.title)
           : r?.added
-            ? `ACQUIRED “${r.title}”! A trusted agent is fetching it.`
-            : 'Could not complete the transaction.',
+            ? copy.requested(r.title)
+            : copy.couldNotComplete,
       )
       load('status')
     } catch {
-      setMsg('ADD FAILED.')
+      setMsg(copy.addFailed)
     }
   }
 
@@ -1057,22 +1063,24 @@ function Media({ api }) {
       </div>
 
       <div className="grid">
-        <Stat label="BUSINESS PARTNER" value={`${emoji} ${service.toUpperCase()}`} />
-        <Stat label="VAULT VERSION" value={status?.version ?? '—'} />
-        <Stat label="LOTS OWNED" value={status?.library ?? '—'} />
-        <Stat label="IN TRANSIT" value={status?.downloading ?? '—'} />
+        <Stat label={copy.service} value={`${emoji} ${service.toUpperCase()}`} />
+        <Stat label={copy.version} value={status?.version ?? '—'} />
+        <Stat label={copy.library} value={status?.library ?? '—'} />
+        <Stat label={copy.downloading} value={status?.downloading ?? '—'} />
       </div>
 
       <section className="section">
-        <h2>{emoji} SEARCH THE MARKET</h2>
+        <h2>
+          {emoji} {copy.searchLibrary}
+        </h2>
         <form className="dlform" onSubmit={doSearch}>
           <input
             type="text"
-            placeholder={`TYPE A ${service === 'radarr' ? 'MOVIE' : 'TV SHOW'} TITLE`}
+            placeholder={copy.typeTitle(service === 'radarr' ? 'movie' : 'TV show')}
             value={term}
             onChange={(e) => setTerm(e.target.value)}
           />
-          <button type="submit">🔎 FIND</button>
+          <button type="submit">{copy.find}</button>
         </form>
         {msg ? <div className="notice">{msg}</div> : null}
         {results && (
@@ -1083,7 +1091,7 @@ function Media({ api }) {
                   {r.poster ? (
                     <img src={r.poster} alt="" loading="lazy" />
                   ) : (
-                    <div className="poster-ph">NO PICTURE</div>
+                    <div className="poster-ph">{copy.noPoster}</div>
                   )}
                   <div className="mbody">
                     <div className="mtitle">
@@ -1091,15 +1099,15 @@ function Media({ api }) {
                     </div>
                     <div className="muted small clamp">{r.overview || 'No details.'}</div>
                     {r.in_library ? (
-                      <span className="pill done">IN VAULT</span>
+                      <span className="pill done">{copy.inLibrary}</span>
                     ) : (
-                      <button onClick={() => add(r.title)}>🤑 ACQUIRE</button>
+                      <button onClick={() => add(r.title)}>{copy.request}</button>
                     )}
                   </div>
                 </div>
               ))
             ) : (
-              <div className="muted">No results, my friend.</div>
+              <div className="muted">{copy.noResults}</div>
             )}
           </div>
         )}
@@ -1108,7 +1116,7 @@ function Media({ api }) {
       <div className="two-col">
         <section className="section">
           <div className="rowhead">
-            <h2>📦 IN TRANSIT (QUEUE)</h2>
+            <h2>{copy.downloadQueue}</h2>
             <button className="mini" onClick={() => load('queue')}>
               REFRESH
             </button>
@@ -1126,13 +1134,13 @@ function Media({ api }) {
               </div>
             ))
           ) : (
-            <div className="muted">Nothing in transit.</div>
+            <div className="muted">{copy.nothingDownloading}</div>
           )}
         </section>
 
         <section className="section">
           <div className="rowhead">
-            <h2>📅 ARRIVING SOON</h2>
+            <h2>{copy.upcoming}</h2>
             <button className="mini" onClick={() => load('calendar')}>
               REFRESH
             </button>
@@ -1148,7 +1156,7 @@ function Media({ api }) {
               </div>
             ))
           ) : (
-            <div className="muted">Nothing arriving yet.</div>
+            <div className="muted">{copy.nothingUpcoming}</div>
           )}
         </section>
       </div>
@@ -1159,6 +1167,7 @@ function Media({ api }) {
 /* ── Schedules ───────────────────────────────────────────────────────────── */
 
 function Schedules({ api }) {
+  const copy = useCopy()
   const [rows, setRows] = useState([])
   const [form, setForm] = useState({
     guild_id: '',
@@ -1197,16 +1206,16 @@ function Schedules({ api }) {
       minutes: form.minutes ? Number(form.minutes) : 1,
     }
     if (!body.guild_id || !body.channel_id) {
-      setMsg('GUILD ID AND CHANNEL ID ARE COMPULSORY.')
+      setMsg(copy.scheduleRequired)
       return
     }
     try {
       await api.post('/api/schedules', body)
-      setMsg('SCHEDULE SEALED IN THE CONTRACT.')
+      setMsg(copy.scheduleCreated)
       setForm({ ...form, message: '' })
       await refresh()
     } catch {
-      setMsg('COULD NOT SEAL THE CONTRACT.')
+      setMsg(copy.scheduleFailed)
     }
   }
 
@@ -1223,7 +1232,7 @@ function Schedules({ api }) {
   return (
     <>
       <section className="section highlight">
-        <h2>⏰ NEW PAYMENT PLAN (SCHEDULE)</h2>
+        <h2>{copy.newSchedule}</h2>
         <form className="form-grid" onSubmit={create}>
           <label>
             GUILD ID
@@ -1254,7 +1263,7 @@ function Schedules({ api }) {
             <input
               value={form.message}
               onChange={(e) => setForm({ ...form, message: e.target.value })}
-              placeholder="Kindly send your bank details…"
+              placeholder={copy.messagePlaceholder}
             />
           </label>
           <label>
@@ -1273,13 +1282,13 @@ function Schedules({ api }) {
               placeholder="1"
             />
           </label>
-          <button type="submit">🖋 SEAL CONTRACT</button>
+          <button type="submit">{copy.createSchedule}</button>
         </form>
         {msg ? <div className="notice">{msg}</div> : null}
       </section>
 
       <section className="section">
-        <h2>📜 ACTIVE CONTRACTS</h2>
+        <h2>{copy.activeSchedules}</h2>
         <table>
           <thead>
             <tr>
@@ -1315,7 +1324,7 @@ function Schedules({ api }) {
                       {r.enabled ? 'PAUSE' : 'RESUME'}
                     </button>
                     <button className="link danger" onClick={() => remove(r.id)}>
-                      DESTROY
+                      {copy.destroy}
                     </button>
                   </td>
                 </tr>
@@ -1323,7 +1332,7 @@ function Schedules({ api }) {
             ) : (
               <tr>
                 <td colSpan="7" className="muted">
-                  No active contracts.
+                  {copy.noSchedules}
                 </td>
               </tr>
             )}
@@ -1989,6 +1998,7 @@ function Compose({ api }) {
 /* ── Users ───────────────────────────────────────────────────────────────── */
 
 function Users({ api }) {
+  const copy = useCopy()
   const [users, setUsers] = useState([])
 
   const refresh = useCallback(async () => {
@@ -2011,11 +2021,8 @@ function Users({ api }) {
 
   return (
     <section className="section">
-      <h2>👑 REGISTER OF HONOURABLES (DISCORD)</h2>
-      <p className="fineprint">
-        The server owner and any <code>ADMIN_DISCORD_IDS</code> are always ADMIN. Changing a role
-        here updates the vault immediately.
-      </p>
+      <h2>{copy.discordUsers}</h2>
+      <p className="fineprint">{copy.usersBlurb}</p>
       <table>
         <thead>
           <tr>
@@ -2041,9 +2048,9 @@ function Users({ api }) {
             ))
           ) : (
             <tr>
-              <td colSpan="4" className="muted">
-                No honourables on record yet.
-              </td>
+                <td colSpan="4" className="muted">
+                  {copy.noUsers}
+                </td>
             </tr>
           )}
         </tbody>
@@ -2055,6 +2062,7 @@ function Users({ api }) {
 /* ── Telegram ────────────────────────────────────────────────────────────── */
 
 function Telegram({ api }) {
+  const copy = useCopy()
   const [status, setStatus] = useState(null)
   const [users, setUsers] = useState([])
 
@@ -2084,30 +2092,24 @@ function Telegram({ api }) {
     <>
       <div className="grid">
         <Stat
-          label="CABLEGRAM SERVICE"
+          label={copy.telegramService}
           value={
             <span className={'pill ' + (status?.configured ? 'done' : 'failed')}>
               {status?.configured ? 'ONLINE' : 'NOT SET'}
             </span>
           }
         />
-        <Stat label="NOTIFY CHAT ID" value={status?.chat_id || '—'} />
-        <Stat label="SUBSCRIBERS" value={status?.users ?? '—'} />
+        <Stat label={copy.notifyChatId} value={status?.chat_id || '—'} />
+        <Stat label={copy.subscribers} value={status?.users ?? '—'} />
       </div>
 
       <section className="section highlight">
-        <h2>✉️ CABLEGRAM OFFICE (TELEGRAM BOT)</h2>
-        <p className="letter">
-          Your Telegram agent can be reached by cablegram on the bot. It accepts
-          <code> /download</code> <code> /downloads</code> <code> /status</code> and
-          <code> /whoami</code>. Finished cargo is announced automatically. To enable, set
-          <code> TELEGRAM_BOT_TOKEN</code> (and <code>TELEGRAM_CHAT_ID</code>) in the stack and make
-          the <code>nigerianbot-telegram</code> image public ONCE.
-        </p>
+        <h2>{copy.telegramPanel}</h2>
+        <p className="letter">{copy.telegramBlurb}</p>
       </section>
 
       <section className="section">
-        <h2>📇 TELEGRAM SUBSCRIBERS</h2>
+        <h2>{copy.telegramSubscribers}</h2>
         <table>
           <thead>
             <tr>
@@ -2151,7 +2153,7 @@ const SETUP = [
   {
     key: 'database',
     icon: '🗄️',
-    title: 'POSTGRESQL (THE VAULT)',
+    title: 'POSTGRESQL',
     blurb: 'One database backs every surface: audit log, downloads, schedules, users.',
     env: [
       ['POSTGRES_USER', 'DB username (stack default: nigerian).'],
@@ -2267,7 +2269,7 @@ const SETUP = [
     ],
     steps: [
       'Set DOWNLOADS_HOST_PATH to a host folder Sonarr/Radarr also mount (chown 10001:10001).',
-      'Queue a URL from the Downloads tab (CARGO); add a "Save as" name for clean matching.',
+      'Queue a URL from the Downloads tab; add a "Save as" name for clean matching.',
       'For Vimeo/login-gated videos, upload cookies.txt in the Downloads tab.',
       'Click 📥 IMPORT on a finished item to send it to Sonarr/Radarr.',
     ],
@@ -2461,6 +2463,7 @@ function Setup({ api, theme, onTheme }) {
 }
 
 function ThemeCard({ theme, onTheme }) {
+  const copy = useCopy()
   return (
     <section className="section highlight">
       <h2>🎨 APPEARANCE</h2>
@@ -2468,8 +2471,8 @@ function ThemeCard({ theme, onTheme }) {
         <label>
           DASHBOARD THEME
           <select value={theme} onChange={(e) => onTheme(e.target.value)}>
-            <option value="419">HONOURABLE BUSINESS (419)</option>
-            <option value="classic">CLASSIC DARK</option>
+            <option value="419">{copy.theme419}</option>
+            <option value="classic">{copy.themeClassic}</option>
           </select>
         </label>
       </div>
@@ -2479,6 +2482,7 @@ function ThemeCard({ theme, onTheme }) {
 }
 
 function ChangePinCard({ api }) {
+  const copy = useCopy()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -2489,18 +2493,18 @@ function ChangePinCard({ api }) {
     e.preventDefault()
     setMsg('')
     if (next !== confirm) {
-      setMsg('THE TWO PINS DO NOT MATCH.')
+      setMsg(copy.errPinMismatch)
       return
     }
     setBusy(true)
     try {
       await api.post('/api/auth/change-pin', { current_pin: current, new_pin: next })
-      setMsg('PIN UPDATED. KEEP IT SECRET, MY FRIEND.')
+      setMsg(copy.pinUpdated)
       setCurrent('')
       setNext('')
       setConfirm('')
     } catch {
-      setMsg('CURRENT PIN WRONG, OR NEW PIN NOT 4-8 DIGITS.')
+      setMsg(copy.pinChangeFailed)
     }
     setBusy(false)
   }
